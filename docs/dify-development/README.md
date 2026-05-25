@@ -50,6 +50,7 @@ Dify Start 节点只声明：
 | [04-user_profile_analysis.md](./04-user_profile_analysis.md) | 用户画像生成与更新工作流 |
 | [05-agent-development-guide.md](./05-agent-development-guide.md) | 后续 agent 分工、并行开发和验收流程 |
 | [06-node-first-visual-composition.md](./06-node-first-visual-composition.md) | 官方节点优先的可视化编排和 Code 替换边界 |
+| [07-stage-rollout-plan.md](./07-stage-rollout-plan.md) | Dify 功能从文档到实施的阶段推进预排 |
 
 ## 通用边界
 
