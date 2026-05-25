@@ -1,0 +1,7 @@
+fastapi==0.124.2
+uvicorn[standard]==0.38.0
+pydantic-settings==2.12.0
+SQLAlchemy==2.0.45
+jsonschema==4.25.1
+httpx==0.28.1
+cryptography>=42.0.0

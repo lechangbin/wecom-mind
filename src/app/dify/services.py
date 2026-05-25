@@ -1,0 +1,148 @@
+from time import perf_counter
+from typing import Any
+from uuid import uuid4
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.errors import AppError, ErrorCode
+from app.core.schema_validator import JsonSchemaValidationError, validate_json_schema
+from app.db.models import AiRun, AiWorkflow, Message, TriggerEvent, now_utc
+from app.dify.client import DifyClient
+
+
+def run_dify_workflow_for_trigger(
+    session: Session,
+    *,
+    trigger_event: TriggerEvent,
+    message: Message,
+    workflow: AiWorkflow,
+    dify_client: DifyClient,
+) -> AiRun:
+    existing = session.scalar(
+        select(AiRun).where(
+            AiRun.trigger_event_id == trigger_event.id,
+            AiRun.workflow_code == workflow.workflow_code,
+            AiRun.workflow_version == workflow.version,
+        )
+    )
+    if existing:
+        return existing
+
+    input_json = build_reply_generation_input(
+        trigger_event=trigger_event,
+        message=message,
+        response_mode=workflow.response_mode,
+    )
+    run = AiRun(
+        run_id=_new_run_id(),
+        workflow_code=workflow.workflow_code,
+        workflow_version=workflow.version,
+        trigger_event_id=trigger_event.id,
+        input_json=input_json,
+        response_mode=workflow.response_mode,
+        status="running",
+        created_at=now_utc(),
+        started_at=now_utc(),
+    )
+    session.add(run)
+    session.flush()
+
+    started = perf_counter()
+    try:
+        output_json = dify_client.run_workflow(workflow, input_json)
+        run.output_json = output_json
+        validate_json_schema(output_json, workflow.output_schema)
+        run.status = "success"
+        run.error_message = None
+    except JsonSchemaValidationError as exc:
+        run.status = "invalid_output"
+        run.error_message = exc.message
+    except Exception as exc:
+        run.status = "failed"
+        run.error_message = str(exc)
+    finally:
+        run.latency_ms = int((perf_counter() - started) * 1000)
+        run.finished_at = now_utc()
+
+    return run
+
+
+def get_enabled_workflow(
+    session: Session,
+    *,
+    workflow_code: str,
+    version: str = "v1",
+) -> AiWorkflow:
+    workflow = session.scalar(
+        select(AiWorkflow).where(
+            AiWorkflow.workflow_code == workflow_code,
+            AiWorkflow.version == version,
+            AiWorkflow.enabled.is_(True),
+        )
+    )
+    if not workflow:
+        raise AppError(ErrorCode.NOT_FOUND, f"Workflow not found: {workflow_code}/{version}")
+    return workflow
+
+
+def build_reply_generation_input(
+    *,
+    trigger_event: TriggerEvent,
+    message: Message,
+    response_mode: str,
+) -> dict[str, Any]:
+    return {
+        "reply_scene": "mention",
+        "chatid": message.chatid,
+        "source_msgid": message.external_msgid,
+        "request_userid": message.userid,
+        "target_userids": [],
+        "user_message": message.content_text,
+        "reply_instruction": "直接回应用户 @ 机器人的消息，基于输入上下文生成简洁回复。",
+        "evidence_msgids": [message.external_msgid],
+        "recent_messages": [
+            {
+                "msgid": message.external_msgid,
+                "userid": message.userid,
+                "content": message.content_text,
+                "create_time": message.create_time.isoformat(),
+            }
+        ],
+        "conversation_summary": None,
+        "user_profile": None,
+        "runtime": {
+            "response_mode": response_mode,
+            "reply_type": "markdown",
+            "language": "zh-CN",
+        },
+    }
+
+
+
+def ai_run_to_dict(run: AiRun) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "run_id": run.run_id,
+        "workflow_code": run.workflow_code,
+        "workflow_version": run.workflow_version,
+        "trigger_event_id": run.trigger_event_id,
+        "input_json": run.input_json,
+        "output_json": run.output_json,
+        "response_mode": run.response_mode,
+        "status": run.status,
+        "latency_ms": run.latency_ms,
+        "token_usage": run.token_usage,
+        "error_message": run.error_message,
+        "created_at": _iso(run.created_at),
+        "started_at": _iso(run.started_at),
+        "finished_at": _iso(run.finished_at),
+    }
+
+
+def _new_run_id() -> str:
+    return f"airun_{now_utc().strftime('%Y%m%d')}_{uuid4().hex[:12]}"
+
+
+def _iso(value):
+    return value.isoformat() if value else None

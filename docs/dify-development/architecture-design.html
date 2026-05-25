@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dify 功能架构设计</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --surface-2: #eef4f7;
+      --ink: #17212b;
+      --muted: #5f6f82;
+      --line: #d7dee8;
+      --blue: #2458d3;
+      --teal: #087f8c;
+      --green: #12805c;
+      --amber: #9a6700;
+      --red: #b42318;
+      --slate: #243447;
+      --shadow: 0 16px 38px rgba(22, 35, 50, 0.08);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.65;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .shell {
+      display: grid;
+      grid-template-columns: 268px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    aside {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 24px 18px;
+      overflow-y: auto;
+      background: #182230;
+      color: #eaf1f8;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 10px 0 0;
+      color: #b7c4d2;
+      font-size: 13px;
+    }
+
+    nav {
+      display: grid;
+      gap: 8px;
+      margin: 26px 0;
+    }
+
+    nav a {
+      display: block;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      color: #dce7f2;
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 14px;
+    }
+
+    nav a:hover {
+      background: #eef4fb;
+      color: #17212b;
+      text-decoration: none;
+    }
+
+    .side-note {
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      padding-top: 16px;
+      color: #b7c4d2;
+      font-size: 12px;
+    }
+
+    main {
+      padding: 30px;
+      min-width: 0;
+    }
+
+    .hero {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 20px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h4 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 10px;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .section {
+      margin: 18px 0;
+    }
+
+    .section > h3 {
+      margin-bottom: 12px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel,
+    .tile,
+    .metric {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .tile {
+      padding: 15px;
+    }
+
+    .metric {
+      padding: 16px;
+      min-height: 118px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 26px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: #ecf2f8;
+      color: #27384a;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .chip.blue { background: #e8efff; color: var(--blue); }
+    .chip.teal { background: #e5f4f6; color: var(--teal); }
+    .chip.green { background: #e7f5ee; color: var(--green); }
+    .chip.amber { background: #fff3d6; color: var(--amber); }
+    .chip.red { background: #feeceb; color: var(--red); }
+
+    .lane {
+      display: grid;
+      gap: 10px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(132px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+
+    .step {
+      position: relative;
+      min-height: 118px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -11px;
+      width: 12px;
+      height: 2px;
+      background: var(--line);
+    }
+
+    .step b {
+      display: block;
+      color: var(--slate);
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .step p {
+      color: var(--muted);
+      font-size: 13px;
+      margin: 0;
+    }
+
+    .swimlane {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .swimlane-row {
+      display: grid;
+      grid-template-columns: 168px minmax(0, 1fr);
+      border-bottom: 1px solid var(--line);
+      min-height: 76px;
+    }
+
+    .swimlane-row:last-child {
+      border-bottom: 0;
+    }
+
+    .swimlane-label {
+      display: flex;
+      align-items: center;
+      padding: 14px;
+      background: #f0f4f8;
+      border-right: 1px solid var(--line);
+      font-weight: 800;
+    }
+
+    .swimlane-content {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 12px;
+    }
+
+    .node {
+      min-width: 130px;
+      max-width: 220px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      font-size: 13px;
+      color: var(--slate);
+    }
+
+    .node.primary {
+      border-color: #b9c8ff;
+      background: #f3f6ff;
+    }
+
+    .node.ai {
+      border-color: #b7dedf;
+      background: #eefafa;
+    }
+
+    .node.guard {
+      border-color: #f3d387;
+      background: #fff9ea;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 740px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    th {
+      background: #f0f4f8;
+      color: #243447;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code {
+      font-family: "Cascadia Code", Consolas, monospace;
+      background: #eef2f7;
+      color: #1f3349;
+      border-radius: 5px;
+      padding: 2px 5px;
+      font-size: 0.92em;
+    }
+
+    pre {
+      margin: 0;
+      padding: 14px;
+      overflow-x: auto;
+      border-radius: 8px;
+      background: #182230;
+      color: #eaf1f8;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .risk-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .risk-list li {
+      padding: 10px 12px;
+      border-left: 4px solid var(--amber);
+      border-radius: 6px;
+      background: #fff9ea;
+      color: #4a3b18;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: relative;
+        height: auto;
+      }
+
+      nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      main {
+        padding: 18px;
+      }
+
+      .grid.two,
+      .grid.three {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: repeat(5, 180px);
+      }
+    }
+
+    @media (max-width: 620px) {
+      nav {
+        grid-template-columns: 1fr;
+      }
+
+      h2 {
+        font-size: 24px;
+      }
+
+      .swimlane-row {
+        grid-template-columns: 1fr;
+      }
+
+      .swimlane-label {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <h1>Dify 功能架构设计</h1>
+        <p>API blocking 主链路，Start 节点统一接收 payload，Dify 只负责 AI 子工作流。</p>
+      </div>
+      <nav aria-label="页面导航">
+        <a href="#overview">架构总览</a>
+        <a href="#contract">调用契约</a>
+        <a href="#boundary">系统边界</a>
+        <a href="#node-flow">节点编排</a>
+        <a href="#workflows">工作流矩阵</a>
+        <a href="#runtime">运行链路</a>
+        <a href="#agent">Agent 开发</a>
+      </nav>
+      <div class="side-note">
+        <p>当前准线：<br>docs/dify-development/</p>
+        <p>Webhook 异步结果回收不在本阶段实现。</p>
+      </div>
+    </aside>
+
+    <main>
+      <section id="overview" class="hero">
+        <p class="eyebrow">Architecture Baseline</p>
+        <h2>自建系统主控，Dify 作为 AI 子工作流引擎</h2>
+        <p class="muted">本架构把 Dify 调用统一收敛到 API blocking。自建系统构造业务 payload、保存 ai_runs、校验 outputs、写库和发送；Dify 只处理语义判断、回复生成、会话切分和画像演进。</p>
+        <div class="chips">
+          <span class="chip blue">/v1/workflows/run</span>
+          <span class="chip teal">Start: payload</span>
+          <span class="chip green">LLM + Code</span>
+          <span class="chip amber">Blocking 验收</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="grid three">
+          <div class="metric">
+            <strong>1</strong>
+            <span>Start 节点变量：只保留 payload，类型为 json_object。</span>
+          </div>
+          <div class="metric">
+            <strong>4</strong>
+            <span>Dify 工作流：意图识别、回复生成、会话切分、用户画像。</span>
+          </div>
+          <div class="metric">
+            <strong>0</strong>
+            <span>Dify 不写库、不发企微、不承担幂等和重试。</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="contract" class="section">
+        <h3>调用契约</h3>
+        <div class="grid two">
+          <div class="panel">
+            <h4>自建系统请求 Dify</h4>
+            <pre>{
+  "inputs": {
+    "payload": {
+      "workflow_specific_field": "value"
+    }
+  },
+  "response_mode": "blocking",
+  "user": "system-or-operator"
+}</pre>
+          </div>
+          <div class="panel">
+            <h4>Dify Start 节点</h4>
+            <pre>{
+  "variable": "payload",
+  "type": "json_object",
+  "required": true
+}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section id="boundary" class="section">
+        <h3>系统边界</h3>
+        <div class="swimlane">
+          <div class="swimlane-row">
+            <div class="swimlane-label">企业微信</div>
+            <div class="swimlane-content">
+              <div class="node">消息事件</div>
+              <div class="node">群聊数据</div>
+              <div class="node">消息发送通道</div>
+              <div class="node">流式回复能力</div>
+            </div>
+          </div>
+          <div class="swimlane-row">
+            <div class="swimlane-label">自建系统</div>
+            <div class="swimlane-content">
+              <div class="node primary">消息入库</div>
+              <div class="node primary">触发判断</div>
+              <div class="node primary">payload 构造</div>
+              <div class="node primary">ai_runs</div>
+              <div class="node primary">schema 校验</div>
+              <div class="node primary">写库与发送</div>
+            </div>
+          </div>
+          <div class="swimlane-row">
+            <div class="swimlane-label">Dify</div>
+            <div class="swimlane-content">
+              <div class="node ai">意图识别</div>
+              <div class="node ai">回复生成</div>
+              <div class="node ai">会话切分</div>
+              <div class="node ai">画像演进</div>
+            </div>
+          </div>
+          <div class="swimlane-row">
+            <div class="swimlane-label">禁止跨界</div>
+            <div class="swimlane-content">
+              <div class="node guard">Dify 不发企微</div>
+              <div class="node guard">Dify 不写业务库</div>
+              <div class="node guard">Dify 不处理重试</div>
+              <div class="node guard">Dify 不做幂等</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="node-flow" class="section">
+        <h3>Dify 内部节点编排</h3>
+        <div class="panel">
+          <div class="flow" aria-label="Dify 节点编排流程">
+            <div class="step">
+              <b>Start</b>
+              <p>接收 <code>payload: json_object</code>，不拆数组字段。</p>
+            </div>
+            <div class="step">
+              <b>Code normalize</b>
+              <p>提取字段、归一化数组、生成 LLM 输入和 fallback。</p>
+            </div>
+            <div class="step">
+              <b>LLM</b>
+              <p>完成语义判断、生成、摘要或画像推理，只输出 JSON。</p>
+            </div>
+            <div class="step">
+              <b>Code finalize</b>
+              <p>解析 JSON、校验证据和用户、兜底异常输出。</p>
+            </div>
+            <div class="step">
+              <b>End</b>
+              <p>只声明正式业务字段，直接作为 <code>data.outputs</code>。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="workflows" class="section">
+        <h3>工作流矩阵</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>workflow_code</th>
+                <th>职责</th>
+                <th>输入重点</th>
+                <th>End outputs</th>
+                <th>关键红线</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>intent_detection</code></td>
+                <td>判断消息窗口是否需要回复、建任务或忽略。</td>
+                <td>消息窗口、命中关键词、已知用户、已有动作。</td>
+                <td><code>actions</code></td>
+                <td>不能输出最终回复正文。</td>
+              </tr>
+              <tr>
+                <td><code>reply_generation</code></td>
+                <td>生成唯一可发送的企业微信回复正文。</td>
+                <td>回复场景、回复指令、证据消息、上下文、画像。</td>
+                <td><code>action</code>、<code>reply</code>、<code>metadata</code>、<code>confidence</code></td>
+                <td>回复必须基于输入证据，可直接发送。</td>
+              </tr>
+              <tr>
+                <td><code>conversation_segmentation</code></td>
+                <td>输出主题会话切分建议。</td>
+                <td>chatid、window、messages、候选边界。</td>
+                <td><code>segments</code></td>
+                <td>起止 msgid 和参与人必须来自输入。</td>
+              </tr>
+              <tr>
+                <td><code>user_profile_analysis</code></td>
+                <td>输出用户画像新增、更新、退役或不变建议。</td>
+                <td>userid、近期消息、会话摘要、当前画像、统计特征。</td>
+                <td><code>userid</code>、<code>profile_action</code>、<code>facts_to_add</code> 等</td>
+                <td>不能编造 fact_id、msgid 或敏感事实。</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="runtime" class="section">
+        <h3>运行链路</h3>
+        <div class="grid two">
+          <div class="tile">
+            <h4>@ 回复链路</h4>
+            <p class="muted">企微消息入库后，自建系统识别显式 @，构造 <code>reply_generation</code> payload，调用 Dify blocking，校验回复输出，再创建 outbox。</p>
+            <div class="chips">
+              <span class="chip blue">mentioned_bot</span>
+              <span class="chip green">reply_generation</span>
+              <span class="chip amber">outbox</span>
+            </div>
+          </div>
+          <div class="tile">
+            <h4>关键词与定时意图</h4>
+            <p class="muted">调度器扫描消息窗口，关键词只是召回线索。Dify 输出 actions；如果需要回复，自建系统再调用 <code>reply_generation</code>。</p>
+            <div class="chips">
+              <span class="chip teal">keyword_scan</span>
+              <span class="chip blue">intent_detection</span>
+              <span class="chip green">reply_generation</span>
+            </div>
+          </div>
+          <div class="tile">
+            <h4>会话切分</h4>
+            <p class="muted">自建系统选择消息窗口，Dify 输出 segments。自建系统校验边界、参与人和重叠区间，再生成 conversation_no 并写库。</p>
+            <div class="chips">
+              <span class="chip blue">messages</span>
+              <span class="chip teal">segments</span>
+              <span class="chip green">conversation_no</span>
+            </div>
+          </div>
+          <div class="tile">
+            <h4>用户画像</h4>
+            <p class="muted">自建系统提供用户近期消息、会话摘要和当前画像。Dify 输出画像演进建议，自建系统校验证据后生成新版本。</p>
+            <div class="chips">
+              <span class="chip blue">recent_messages</span>
+              <span class="chip teal">facts</span>
+              <span class="chip green">profile_version</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="agent" class="section">
+        <h3>Agent 开发节奏</h3>
+        <div class="grid two">
+          <div class="panel">
+            <h4>串行前置</h4>
+            <div class="lane">
+              <div class="node primary">统一 Start payload</div>
+              <div class="node primary">统一 Code outputs 类型</div>
+              <div class="node primary">统一 End 正式字段</div>
+              <div class="node primary">统一 blocking API 验收</div>
+            </div>
+          </div>
+          <div class="panel">
+            <h4>可并行开发</h4>
+            <div class="lane">
+              <div class="node ai">intent_detection Prompt 与 finalize</div>
+              <div class="node ai">reply_generation Prompt 与 finalize</div>
+              <div class="node ai">conversation_segmentation Prompt 与 finalize</div>
+              <div class="node ai">user_profile_analysis Prompt 与 finalize</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h3>风险控制</h3>
+        <ul class="risk-list">
+          <li>Dify API 响应不是 <code>data.status=succeeded</code> 时，自建系统必须记录失败，不消费 outputs。</li>
+          <li>outputs 缺字段、字段类型不匹配、引用不存在的 msgid 或 userid 时，必须进入 invalid_output。</li>
+          <li>Webhook ack 不是业务 outputs，在没有结果回收机制前不能作为主链路。</li>
+          <li>LLM 输出 JSON 外说明文字时，finalize Code 必须解析或兜底，不能让散文进入 End。</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

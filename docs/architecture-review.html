@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>企微机器人架构审查报告</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #eef3f5;
+      --ink: #17212b;
+      --muted: #637083;
+      --line: #d8dee6;
+      --blue: #2563eb;
+      --teal: #087f8c;
+      --green: #138a55;
+      --amber: #ad6800;
+      --red: #b42318;
+      --chip: #edf2f7;
+      --shadow: 0 18px 45px rgba(20, 31, 45, 0.08);
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 24px 18px;
+      background: #182230;
+      color: #eef4fb;
+      overflow-y: auto;
+    }
+
+    .brand {
+      margin-bottom: 24px;
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 800;
+    }
+
+    .brand p {
+      margin: 8px 0 0;
+      color: #b7c4d2;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+      margin: 20px 0;
+    }
+
+    .nav button {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.04);
+      color: #d9e4ef;
+      cursor: pointer;
+      text-align: left;
+      font-size: 14px;
+    }
+
+    .nav button.active,
+    .nav button:hover {
+      background: #eef4fb;
+      color: #17212b;
+    }
+
+    .sidebar .meta {
+      display: grid;
+      gap: 8px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255,255,255,0.12);
+      color: #b7c4d2;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    main {
+      padding: 28px;
+      min-width: 0;
+    }
+
+    .topbar {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .search {
+      width: min(360px, 45vw);
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+    }
+
+    .search:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .metric,
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric {
+      padding: 16px;
+    }
+
+    .metric .value {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .metric .label {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .card {
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+
+    .card h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    .card p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .badge-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--chip);
+      color: #344054;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .badge.good {
+      background: #e6f4ee;
+      color: var(--green);
+    }
+
+    .badge.warn {
+      background: #fff2d9;
+      color: var(--amber);
+    }
+
+    .badge.risk {
+      background: #fde8e7;
+      color: var(--red);
+    }
+
+    .badge.info {
+      background: #e8f0ff;
+      color: var(--blue);
+    }
+
+    .call-chain {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+
+    .step {
+      position: relative;
+      min-height: 112px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .step::after {
+      content: "";
+      position: absolute;
+      right: -10px;
+      top: 48px;
+      width: 10px;
+      height: 2px;
+      background: #9aa7b7;
+    }
+
+    .step:last-child::after {
+      display: none;
+    }
+
+    .step .name {
+      display: block;
+      font-weight: 750;
+      line-height: 1.35;
+      margin-bottom: 6px;
+    }
+
+    .step .note {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .step .source {
+      display: block;
+      margin-top: 8px;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .module-map {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+    }
+
+    .module {
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .module h4 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .module ul,
+    .card ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .file-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .file-link {
+      display: block;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 12px;
+      word-break: break-all;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 780px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    th {
+      background: #edf2f7;
+      color: #2d3a48;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #edf2f7;
+      font-family: Consolas, "SFMono-Regular", monospace;
+      font-size: 0.92em;
+    }
+
+    .empty {
+      display: none;
+      margin-top: 16px;
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      background: #fff;
+    }
+
+    .filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+
+    .filter {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      min-height: 34px;
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+
+    .filter.active {
+      border-color: var(--teal);
+      background: #e3f5f7;
+      color: #075c66;
+    }
+
+    .lead {
+      max-width: 980px;
+      color: var(--muted);
+      line-height: 1.75;
+      margin: 0 0 18px;
+    }
+
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: relative;
+        height: auto;
+      }
+
+      .nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      main {
+        padding: 20px;
+      }
+
+      .summary-grid,
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .topbar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .search {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>企微机器人架构审查</h1>
+        <p>依据 improve-codebase-architecture 的 Module / Interface / Depth / Seam / Adapter 语言，对当前实现做结构化审查。</p>
+      </div>
+      <nav class="nav" aria-label="报告导航">
+        <button class="active" data-section="overview">总览</button>
+        <button data-section="architecture">架构地图</button>
+        <button data-section="flows">调用链路</button>
+        <button data-section="features">实现功能</button>
+        <button data-section="opportunities">Deepening 机会</button>
+        <button data-section="evidence">证据与验证</button>
+      </nav>
+      <div class="meta">
+        <span>审查日期：2026-05-20</span>
+        <span>项目阶段：阶段 12，消息入库任务处理器 MVP</span>
+        <span>报告形式：本地交互式 HTML，无外部依赖</span>
+      </div>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <h2 id="section-title">总览</h2>
+        <input class="search" id="search" type="search" placeholder="搜索模块、链路、文件或问题">
+      </div>
+
+      <section id="overview" class="section active">
+        <div class="summary-grid">
+          <div class="metric"><div class="value">55</div><div class="label">Python 源文件</div></div>
+          <div class="metric"><div class="value">27</div><div class="label">HTTP 入口</div></div>
+          <div class="metric"><div class="value">98</div><div class="label">已收集测试</div></div>
+          <div class="metric"><div class="value">19</div><div class="label">项目文档</div></div>
+        </div>
+        <p class="lead">总体判断：当前实现与文档里的“自建系统主控 + Dify AI 子工作流”方向一致。状态、幂等、审计和最终写库权都留在自建系统，Dify 被限制在结构化建议输出；企微与 Dify 的 mock/real Adapter 也已经形成清晰的 Seam。主要架构摩擦不是方向错误，而是一些运行生命周期与查询逻辑在多个 Module 内重复生长，导致 Locality 下降。</p>
+        <div class="grid-2">
+          <article class="card searchable" data-tags="strength depth seam adapter">
+            <h3>最强的 Depth</h3>
+            <p><code>DifyClient</code>、<code>WeComCallbackVerifier</code>、<code>WeComMessageSender</code> 都有 mock/real Adapter。调用方只依赖小 Interface，就能切换本地测试和真实外部系统。</p>
+            <div class="badge-row">
+              <span class="badge good">真实 Seam</span>
+              <span class="badge good">测试友好</span>
+              <span class="badge info">外部系统隔离</span>
+            </div>
+          </article>
+          <article class="card searchable" data-tags="friction duplication locality">
+            <h3>最明显的摩擦</h3>
+            <p>AI 运行生命周期、消息窗口查询、时间转换、统计业务时间推断分散在多个 Module。删除其中一个重复片段，复杂度会在其他调用方重新出现，说明这些行为值得被集中到更深的 Module。</p>
+            <div class="badge-row">
+              <span class="badge warn">Locality 偏散</span>
+              <span class="badge warn">重复状态机</span>
+              <span class="badge risk">后续规模风险</span>
+            </div>
+          </article>
+        </div>
+        <article class="card searchable" data-tags="scope manual pipeline mvp">
+          <h3>范围边界</h3>
+          <p>当前链路仍是 MVP 闭环：回调入库任务、触发评估、定时意图、会话切分、画像分析、outbox 发送都通过 HTTP 入口手动触发或查询。真实定时器、真实拉取任务、自动业务流水线、Dify streaming 和前端后台尚未纳入当前实现。</p>
+        </article>
+      </section>
+
+      <section id="architecture" class="section">
+        <p class="lead">架构由 FastAPI 入口、核心基础设施、持久化模型、外部系统 Adapter、AI 工作流执行与业务结果写入几个层次组成。下面按 Module 看 Interface、Implementation 和 Depth。</p>
+        <div id="module-map" class="module-map"></div>
+      </section>
+
+      <section id="flows" class="section">
+        <p class="lead">选择一个链路后，下面会展示入口、关键 Module、持久化对象和外部 Adapter 的调用顺序。每一步都带有源文件位置。</p>
+        <div id="flow-filters" class="filters"></div>
+        <div id="flow-list"></div>
+      </section>
+
+      <section id="features" class="section">
+        <p class="lead">功能实现按 README 和代码入口共同核对。列表里的状态描述的是当前代码已经具备的行为，不包含 README 中明确排除的后续范围。</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>阶段</th><th>实现功能</th><th>关键 Module</th><th>主要入口</th></tr></thead>
+            <tbody id="feature-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="opportunities" class="section">
+        <p class="lead">这些是 deepening opportunities，不是立即改代码的指令。每条都按 Files、Problem、Solution、Benefits 展开，并使用 improve-codebase-architecture 的术语描述。</p>
+        <div id="opportunity-list"></div>
+      </section>
+
+      <section id="evidence" class="section">
+        <div class="grid-2">
+          <article class="card searchable" data-tags="verification pytest collect">
+            <h3>测试证据</h3>
+            <p>已运行 <code>.\.venv\Scripts\python.exe -m pytest --collect-only -q</code>，结果为 <code>98 tests collected</code>。这证明测试套件覆盖了当前 12 个阶段的主要行为；完整执行会在报告文件验证后再跑一次。</p>
+          </article>
+          <article class="card searchable" data-tags="docs context adr">
+            <h3>文档证据</h3>
+            <p>项目存在架构文档、模块文档和 open decisions，但没有发现 <code>CONTEXT.md</code> 或 <code>docs/adr/</code>。这不影响本次审查，但会让后续架构语言更依赖 README 和 docs 的自然语言描述。</p>
+          </article>
+        </div>
+        <article class="card searchable" data-tags="files source evidence">
+          <h3>关键源文件</h3>
+          <div id="file-list" class="file-list"></div>
+        </article>
+      </section>
+
+      <div id="empty" class="empty">没有匹配的内容。试试搜索“Dify”、“入库”、“outbox”、“Locality”或“统计”。</div>
+    </main>
+  </div>
+
+  <script>
+    const report = {
+      modules: [
+        {
+          name: "应用组装 Module",
+          depth: "Deep",
+          files: [["src/app/main.py", 37]],
+          interfaceText: "create_app(settings) 组装数据库、默认记录、外部 Adapter、路由、中间件和异常处理。",
+          implementationText: "FastAPI app.state 持有 SessionLocal、Dify client、企微回调 verifier、企微发送 sender。",
+          notes: ["启动入口集中，调用方不用知道各 Adapter 的构造细节。", "后续若增加后台任务 runner，可以继续从这里接入。"]
+        },
+        {
+          name: "企微接入 Module",
+          depth: "Mixed",
+          files: [["src/app/api/wecom.py", 28], ["src/app/wecom/verifier.py", 30], ["src/app/wecom/services.py", 24], ["src/app/wecom/jobs.py", 16]],
+          interfaceText: "回调验签、回调落库、入库任务处理、直接消息入库。",
+          implementationText: "real/mock verifier 已成 Seam；normalize job 与 ingest_message 共同完成 raw 到 normalized 的转换和幂等写入。",
+          notes: ["回调与消息入库方向清晰。", "job 状态、事务提交和 raw shape 转换仍偏分散。"]
+        },
+        {
+          name: "Dify 工作流 Module",
+          depth: "Mixed",
+          files: [["src/app/dify/client.py", 11], ["src/app/dify/services.py", 14], ["src/app/db/defaults.py", 70]],
+          interfaceText: "DifyClient.run_workflow(workflow, input_json) 与工作流注册表。",
+          implementationText: "MockDifyClient、DifyHttpClient 两个 Adapter；schema 存在 ai_workflows，输出统一校验。",
+          notes: ["外部调用 Seam 很好。", "AiRun 生命周期在多处重复，需要更深的 Module。"]
+        },
+        {
+          name: "触发与回复 Module",
+          depth: "Deep",
+          files: [["src/app/triggers/services.py", 15], ["src/app/outbound/services.py", 48]],
+          interfaceText: "evaluate_triggers(payload, dify_client) 从 message_id 出发，完成 @ 触发、Dify 调用和 outbox 创建。",
+          implementationText: "TriggerEvent 幂等，AiRun 幂等，reply_{run_id} 幂等，失败和非法输出不会写发送任务。",
+          notes: ["@ 回复主链路闭合度高。", "目前需要手动调用 evaluate，入库后自动触发尚未接上。"]
+        },
+        {
+          name: "出站发送 Module",
+          depth: "Deep",
+          files: [["src/app/outbound/services.py", 124], ["src/app/outbound/sender.py", 11], ["src/app/wecom/client.py", 29]],
+          interfaceText: "send_outbox_message(outbox_identifier, sender) 与 WeComMessageSender.send(outbox)。",
+          implementationText: "mock、app、webhook 三个 Adapter；真实 app sender 复用 WeComApiClient token 缓存和重试。",
+          notes: ["这是项目中最成熟的 Adapter Seam 之一。", "发送结果仍是 dict，类型和成功判断可继续加深。"]
+        },
+        {
+          name: "会话 / 画像 / 定时意图 Module",
+          depth: "Shallow-Mixed",
+          files: [["src/app/conversations/services.py", 21], ["src/app/profiles/services.py", 28], ["src/app/scheduled_intents/services.py", 23]],
+          interfaceText: "按 chat/user/time window 构造 Dify 输入，校验输出，再写 conversation/profile/intent。",
+          implementationText: "三条链路结构相似，但各自持有消息窗口查询、AiRun 生命周期、错误映射和 UTC 处理。",
+          notes: ["业务规则扎实，测试覆盖充分。", "重复实现使 Locality 下降。"]
+        },
+        {
+          name: "管理统计 Module",
+          depth: "Shallow",
+          files: [["src/app/admin_analytics/services.py", 24], ["src/app/api/admin_analytics.py", 19]],
+          interfaceText: "dashboard、chats、users、message stats、workflow stats 查询。",
+          implementationText: "直接从业务表读取并在 Python 内存里聚合，部分业务时间从 ai_run.input_json 推断。",
+          notes: ["适合 MVP 小数据。", "数据量增长后会成为性能和知识重复的热点。"]
+        }
+      ],
+      flows: [
+        {
+          id: "startup",
+          title: "应用启动链路",
+          type: "foundation",
+          summary: "把 Settings、数据库、默认规则/工作流和外部 Adapter 组装成 FastAPI 实例。",
+          steps: [
+            ["create_app", "src/app/main.py", 37, "读取 Settings 并配置日志"],
+            ["initialize_database", "src/app/main.py", 43, "创建 SQLAlchemy engine 并 create_all"],
+            ["initialize_default_records", "src/app/db/defaults.py", 17, "幂等写入默认 TriggerRule 和 AiWorkflow"],
+            ["build_dify_client", "src/app/dify/client.py", 250, "按配置选择 mock 或 real Adapter"],
+            ["build_wecom_callback_verifier", "src/app/wecom/verifier.py", 157, "按配置选择 mock 或 real verifier"],
+            ["build_wecom_message_sender", "src/app/outbound/sender.py", 102, "按配置选择 mock/app/webhook sender"],
+            ["include_router", "src/app/main.py", 53, "注册所有 HTTP 入口"]
+          ]
+        },
+        {
+          id: "callback",
+          title: "企微回调到标准消息链路",
+          type: "ingestion",
+          summary: "回调先落库并创建入库任务，手动执行 normalize job 后写入 raw 和 normalized message。",
+          steps: [
+            ["POST /api/wecom/callbacks/mcp", "src/app/api/wecom.py", 42, "读取 query 和 body"],
+            ["WeComCallbackVerifier.verify", "src/app/wecom/verifier.py", 34, "mock 放行或 real 签名/AES 解密"],
+            ["record_mcp_callback", "src/app/wecom/services.py", 24, "按 query/body/raw 生成 callback 幂等键"],
+            ["_build_callback_job", "src/app/wecom/services.py", 157, "创建 normalize 或 pull job"],
+            ["POST /api/wecom/ingestion-jobs/{job_id}/run", "src/app/api/wecom.py", 105, "手动执行单个入库任务"],
+            ["process_message_ingestion_job", "src/app/wecom/jobs.py", 16, "从 raw_body 解析 raw_message/messages/XML dict"],
+            ["ingest_message", "src/app/wecom/services.py", 80, "写 MessageRaw、Message、WeComChat、WeComUser"]
+          ]
+        },
+        {
+          id: "mention",
+          title: "@ 实时回复链路",
+          type: "ai",
+          summary: "从标准消息的 mentioned_bot 字段出发，创建 TriggerEvent、AiRun、BotReply 和 outbox。",
+          steps: [
+            ["POST /api/triggers/evaluate", "src/app/api/triggers.py", 13, "接收 message_id"],
+            ["evaluate_triggers", "src/app/triggers/services.py", 15, "读取 Message 并检查 mentioned_bot"],
+            ["_get_or_create_trigger_event", "src/app/triggers/services.py", 68, "message_id + rule_code 幂等"],
+            ["get_enabled_workflow", "src/app/dify/services.py", 71, "读取 mention_reply/v1"],
+            ["run_dify_workflow_for_trigger", "src/app/dify/services.py", 14, "创建 AiRun、调用 Dify、校验输出"],
+            ["create_reply_outbox_for_ai_run", "src/app/outbound/services.py", 48, "成功且 action=reply 时写 bot_replies/outbox_messages"],
+            ["POST /api/outbox-messages/{outbox_id}/send", "src/app/api/outbox.py", 69, "手动发送 pending outbox"]
+          ]
+        },
+        {
+          id: "conversation",
+          title: "会话切分链路",
+          type: "ai",
+          summary: "按 chatid 和时间窗口取消息，Dify 产出会话段建议，自建系统校验边界后写库。",
+          steps: [
+            ["POST /api/conversations/segment/run", "src/app/api/conversations.py", 18, "接收 chatid/start/end/mode"],
+            ["run_conversation_segmentation", "src/app/conversations/services.py", 21, "解析时间窗口并查询消息"],
+            ["_build_segmentation_input", "src/app/conversations/services.py", 168, "构造 messages 和 runtime 输入"],
+            ["DifyClient.run_workflow", "src/app/dify/client.py", 11, "mock 或 real blocking 调用"],
+            ["_validate_segmentation_output", "src/app/conversations/services.py", 198, "校验 msgid、participants、区间重叠"],
+            ["_write_segments", "src/app/conversations/services.py", 242, "chatid + start/end message 幂等写 conversation_segments"]
+          ]
+        },
+        {
+          id: "profile",
+          title: "用户画像链路",
+          type: "ai",
+          summary: "按用户时间窗口取消息和会话摘要，Dify 输出画像和事实，自建系统做证据校验和版本管理。",
+          steps: [
+            ["POST /api/profiles/analyze/run", "src/app/api/profiles.py", 13, "接收 userid/time_range/mode"],
+            ["run_user_profile_analysis", "src/app/profiles/services.py", 28, "查询用户消息、当前画像和会话摘要"],
+            ["_build_profile_input", "src/app/profiles/services.py", 215, "构造 recent_messages、conversation_summaries、statistics"],
+            ["DifyClient.run_workflow", "src/app/dify/client.py", 11, "调用 user_profile_analysis/v1"],
+            ["_validate_profile_output", "src/app/profiles/services.py", 259, "校验 userid 和 evidence 来源"],
+            ["_write_profile", "src/app/profiles/services.py", 292, "旧画像 superseded，新画像 active，fact 按置信度落库"]
+          ]
+        },
+        {
+          id: "scheduled",
+          title: "定时意图链路",
+          type: "ai",
+          summary: "手动触发时间窗口扫描，Dify 给出主动提醒意图，高置信度时写 scheduled_intents 并可自动创建 proactive outbox。",
+          steps: [
+            ["POST /api/scheduled-intents/run", "src/app/api/scheduled_intents.py", 16, "接收 chatid/time_range/job_id/auto_enqueue"],
+            ["run_scheduled_intent_detection", "src/app/scheduled_intents/services.py", 23, "取消息窗口并读取 workflow"],
+            ["_build_intent_input", "src/app/scheduled_intents/services.py", 176, "构造 messages 和 known_users"],
+            ["_validate_intent_output", "src/app/scheduled_intents/services.py", 214, "校验 target_userid、evidence_msgids、suggested_message"],
+            ["_write_intents", "src/app/scheduled_intents/services.py", 241, "按窗口+用户+首条证据 msgid 幂等"],
+            ["create_outbox_message", "src/app/outbound/services.py", 13, "高置信度且 auto_enqueue 时写 proactive outbox"]
+          ]
+        },
+        {
+          id: "analytics",
+          title: "管理统计链路",
+          type: "query",
+          summary: "直接从业务表读取消息、用户、群、AiRun、TriggerEvent 和 ScheduledIntent，返回聚合视图。",
+          steps: [
+            ["GET /api/dashboard/overview", "src/app/api/admin_analytics.py", 19, "接收 date"],
+            ["get_dashboard_overview", "src/app/admin_analytics/services.py", 24, "加载 Message/TriggerEvent/AiRun/ScheduledIntent"],
+            ["_ai_run_business_time", "src/app/admin_analytics/services.py", 341, "按 trigger 或 input_json 推断业务时间"],
+            ["_success_rate / _avg_int", "src/app/admin_analytics/services.py", 428, "计算成功率和延迟"],
+            ["success_response", "src/app/core/responses.py", 6, "统一响应格式"]
+          ]
+        }
+      ],
+      features: [
+        ["阶段 1", "FastAPI 骨架、Settings、统一响应、错误码、请求 ID、日志脱敏、健康检查。", "main / core / config / db", "GET /health"],
+        ["阶段 2", "企微回调接收、验签 Seam、raw 和 normalized 消息入库、群/用户 upsert、@ 识别、幂等。", "wecom / db", "POST /api/wecom/callbacks/mcp, POST /api/wecom/messages/ingest"],
+        ["阶段 3", "mention 触发规则、TriggerEvent、AiRun、Dify mock、输出 JSON schema 校验。", "triggers / dify", "POST /api/triggers/evaluate, GET /api/ai-runs"],
+        ["阶段 4", "BotReply 和 outbox 创建、手动 outbox、mock sender、发送状态和失败审计。", "outbound", "POST /api/outbox-messages, POST /api/outbox-messages/{id}/send"],
+        ["阶段 5", "会话切分 workflow、窗口消息输入、Dify 输出边界校验、conversation_segments 写入。", "conversations / dify", "POST /api/conversations/segment/run"],
+        ["阶段 6", "用户画像 workflow、画像版本、事实置信度分层、证据消息/会话校验。", "profiles / conversations", "POST /api/profiles/analyze/run, GET /api/users/{userid}/profile"],
+        ["阶段 7", "定时意图检测、known_users 校验、低置信度忽略、高置信度 proactive outbox。", "scheduled_intents / outbound", "POST /api/scheduled-intents/run"],
+        ["阶段 8", "总览、群聊、用户、消息趋势、workflow 统计、AiRun 过滤查询。", "admin_analytics / api", "GET /api/dashboard/overview, GET /api/stats/messages"],
+        ["阶段 9", "真实 Dify HTTP Adapter，blocking 调用、base_url 规整、输出解析、错误映射。", "dify.client", "DIFY_CLIENT_MODE=real"],
+        ["阶段 10", "真实企微发送 Adapter，app/webhook 模式、token 缓存、失效刷新、失败审计。", "outbound.sender / wecom.client", "WECOM_SENDER_MODE=app|webhook"],
+        ["阶段 11", "真实企微 URL 验证、签名校验、AES-256-CBC 解密、XML dict 入库。", "wecom.verifier / wecom.crypto", "GET/POST /api/wecom/callbacks/mcp"],
+        ["阶段 12", "message_ingestion_jobs normalize 处理器、批量 pending 执行、失败重试、XML 文本消息转换。", "wecom.jobs", "POST /api/wecom/ingestion-jobs/run"]
+      ],
+      opportunities: [
+        {
+          title: "1. Deepen AI Run Lifecycle Module",
+          score: "High",
+          files: [["src/app/dify/services.py", 14], ["src/app/conversations/services.py", 21], ["src/app/profiles/services.py", 28], ["src/app/scheduled_intents/services.py", 23]],
+          problem: "Problem: 多个 Module 都在重复 AiRun 创建、status=running/success/failed/invalid_output、latency_ms、finished_at、Dify 调用和 schema 错误映射。Deletion test: 删除任意一处生命周期代码，复杂度会在其余三处重新出现。",
+          solution: "Solution: 把 AiRun lifecycle、Dify 调用、输入输出 schema 校验和错误状态映射集中到一个更深的 Module。各业务 Module 只负责构造输入、做领域校验、写领域结果。",
+          benefits: "Benefits: Locality 更强，Dify 错误和状态语义只改一处；Leverage 更高，一个测试面能覆盖所有 workflow 的通用失败模式。"
+        },
+        {
+          title: "2. Deepen Message Window Query Module",
+          score: "High",
+          files: [["src/app/conversations/services.py", 152], ["src/app/profiles/services.py", 166], ["src/app/scheduled_intents/services.py", 160], ["src/app/admin_analytics/services.py", 308]],
+          problem: "Problem: chat/user/time window 查询和 UTC 转换在多个 Module 内重复，而且多处先 select 全量再在 Python 过滤。Interface 让调用方知道太多时间处理和筛选细节。",
+          solution: "Solution: 把“按 chatid/userid + 时间窗口取消息、排序、UTC 归一化、空窗口错误语义”放进一个深 Module。业务 Module 只表达自己需要哪类窗口。",
+          benefits: "Benefits: Locality 集中到查询 Module；Leverage 体现在性能优化、索引使用、时间边界规则可以一次修正并惠及会话、画像、定时意图和统计。"
+        },
+        {
+          title: "3. Deepen Ingestion Job State Module",
+          score: "Medium",
+          files: [["src/app/wecom/services.py", 24], ["src/app/wecom/jobs.py", 16], ["src/app/api/wecom.py", 42]],
+          problem: "Problem: 回调落库、任务创建、raw message 提取、MessageIngestRequest 构造、job 状态流转和 transaction ownership 分散在 route、callback Module 和 job Module。Pull job 也已经出现在 Interface 中，但 Implementation 还只返回 unsupported。",
+          solution: "Solution: 把 job 状态机和 raw-message extraction 作为一个更深 Module；把 JSON 回调、messages 数组、XML dict 当作同一 Seam 后面的 Adapter，而不是让 job loop 直接知道所有 shape。",
+          benefits: "Benefits: Locality 变好，失败重试、skipped/succeeded/failed、callback processed/failed 的规则集中；后续实现 pull job 时可以复用同一 job lifecycle。"
+        },
+        {
+          title: "4. Deepen Outbox Send Result Module",
+          score: "Medium",
+          files: [["src/app/outbound/services.py", 124], ["src/app/outbound/sender.py", 11], ["src/app/wecom/client.py", 29]],
+          problem: "Problem: WeComMessageSender 是好 Seam，但 send() 返回 dict，success 有时显式、有时由 raw_response.errcode 推断。调用方仍需知道外部响应 shape 的一部分。",
+          solution: "Solution: 把发送结果、错误码、external_msgid 和 raw_response 规整成一个稳定结果 Module，让 Adapter 返回统一对象，outbox Implementation 不再解析外部响应细节。",
+          benefits: "Benefits: Leverage 更高，新增 streaming sender 或模板卡片 sender 时只需满足统一结果；Locality 更好，成功判断和错误映射集中测试。"
+        },
+        {
+          title: "5. Deepen Analytics Read Module",
+          score: "Medium",
+          files: [["src/app/admin_analytics/services.py", 24], ["src/app/admin_analytics/services.py", 341], ["src/app/db/models.py", 238]],
+          problem: "Problem: 管理统计直接全表加载并在内存聚合，还要从 AiRun.input_json 推断业务时间。这让统计 Module 知道多个 workflow 输入结构，Interface 接近 Implementation。",
+          solution: "Solution: 建一个更深的统计读取 Module 或轻量 projection，把业务时间和聚合口径沉淀为稳定 Interface；MVP 可先从 SQL 聚合和公共 business_time 函数开始。",
+          benefits: "Benefits: 查询性能可逐步优化；新增 workflow 不会迫使统计 Module 学习新的 input_json 结构；测试可以围绕固定统计口径展开。"
+        },
+        {
+          title: "6. Formalize Domain Vocabulary",
+          score: "Low",
+          files: [["docs/architecture/README.md", 1], ["docs/architecture/open-decisions.md", 1], ["docs/modules/README.md", 1]],
+          problem: "Problem: 文档内容很丰富，但没有 CONTEXT.md 或 docs/adr/ 记录领域词和架构决策。下次审查容易重新争论已决定的 Seam，例如 Dify 是否直接读库、MVP 是否建设 Internal MCP Server。",
+          solution: "Solution: 把核心领域词和已确认/未确认决策整理为 CONTEXT.md 与 ADR。不要替代现有文档，只给未来审查提供稳定语境。",
+          benefits: "Benefits: AI-navigability 更强；后续 deepening conversation 可以直接沿用一致词汇，减少反复解释。"
+        }
+      ],
+      files: [
+        ["src/app/main.py", 37, "应用组装入口"],
+        ["src/app/db/models.py", 36, "核心数据模型"],
+        ["src/app/db/defaults.py", 17, "默认规则与工作流"],
+        ["src/app/wecom/services.py", 24, "回调落库与消息入库"],
+        ["src/app/wecom/jobs.py", 16, "入库任务处理器"],
+        ["src/app/wecom/verifier.py", 30, "企微回调验证 Seam"],
+        ["src/app/dify/client.py", 11, "Dify client Seam"],
+        ["src/app/dify/services.py", 14, "mention workflow 运行"],
+        ["src/app/triggers/services.py", 15, "触发评估"],
+        ["src/app/outbound/services.py", 13, "outbox 与发送状态"],
+        ["src/app/outbound/sender.py", 11, "企微发送 Adapter"],
+        ["src/app/conversations/services.py", 21, "会话切分"],
+        ["src/app/profiles/services.py", 28, "用户画像"],
+        ["src/app/scheduled_intents/services.py", 23, "定时意图"],
+        ["src/app/admin_analytics/services.py", 24, "管理统计"],
+        ["docs/architecture/open-decisions.md", 1, "待确认事项"]
+      ]
+    };
+
+    const state = { section: "overview", query: "", flowType: "all" };
+    const titleMap = {
+      overview: "总览",
+      architecture: "架构地图",
+      flows: "调用链路",
+      features: "实现功能",
+      opportunities: "Deepening 机会",
+      evidence: "证据与验证"
+    };
+
+    const sourceHref = (file) => "../" + file.replaceAll("\\", "/");
+    const sourceLabel = (file, line) => `${file}:${line}`;
+    const esc = (value) => String(value).replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    }[ch]));
+
+    function sourceLink(file, line) {
+      return `<a href="${sourceHref(file)}" class="source" title="打开源文件">${esc(sourceLabel(file, line))}</a>`;
+    }
+
+    function renderModules() {
+      document.getElementById("module-map").innerHTML = report.modules.map((item) => {
+        const cls = item.depth.includes("Deep") ? "good" : item.depth.includes("Shallow") ? "warn" : "info";
+        return `
+          <article class="module searchable" data-tags="${esc([item.name, item.depth, item.interfaceText, item.implementationText, item.notes.join(" ")].join(" "))}">
+            <h4>${esc(item.name)}</h4>
+            <div class="badge-row"><span class="badge ${cls}">${esc(item.depth)}</span></div>
+            <p><strong>Interface：</strong>${esc(item.interfaceText)}</p>
+            <p><strong>Implementation：</strong>${esc(item.implementationText)}</p>
+            <ul>${item.notes.map((note) => `<li>${esc(note)}</li>`).join("")}</ul>
+            <div class="badge-row">${item.files.map(([file, line]) => `<span class="badge">${esc(sourceLabel(file, line))}</span>`).join("")}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderFlowFilters() {
+      const filters = [
+        ["all", "全部"],
+        ["foundation", "基础设施"],
+        ["ingestion", "消息入库"],
+        ["ai", "AI 工作流"],
+        ["query", "查询统计"]
+      ];
+      document.getElementById("flow-filters").innerHTML = filters.map(([id, label]) =>
+        `<button class="filter ${state.flowType === id ? "active" : ""}" data-flow-type="${id}">${label}</button>`
+      ).join("");
+    }
+
+    function renderFlows() {
+      const flows = report.flows.filter((flow) => state.flowType === "all" || flow.type === state.flowType);
+      document.getElementById("flow-list").innerHTML = flows.map((flow) => `
+        <article class="card searchable" data-tags="${esc([flow.title, flow.type, flow.summary, flow.steps.flat().join(" ")].join(" "))}">
+          <h3>${esc(flow.title)}</h3>
+          <p>${esc(flow.summary)}</p>
+          <div class="badge-row">
+            <span class="badge info">${esc(flow.type)}</span>
+            <span class="badge">${flow.steps.length} steps</span>
+          </div>
+          <div class="call-chain">
+            ${flow.steps.map(([name, file, line, note]) => `
+              <div class="step">
+                <span class="name">${esc(name)}</span>
+                <span class="note">${esc(note)}</span>
+                ${sourceLink(file, line)}
+              </div>
+            `).join("")}
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function renderFeatures() {
+      document.getElementById("feature-body").innerHTML = report.features.map((row) => `
+        <tr class="searchable" data-tags="${esc(row.join(" "))}">
+          <td><strong>${esc(row[0])}</strong></td>
+          <td>${esc(row[1])}</td>
+          <td>${esc(row[2])}</td>
+          <td><code>${esc(row[3])}</code></td>
+        </tr>
+      `).join("");
+    }
+
+    function renderOpportunities() {
+      document.getElementById("opportunity-list").innerHTML = report.opportunities.map((item) => {
+        const cls = item.score === "High" ? "risk" : item.score === "Medium" ? "warn" : "info";
+        return `
+          <article class="card searchable" data-tags="${esc([item.title, item.score, item.problem, item.solution, item.benefits, item.files.flat().join(" ")].join(" "))}">
+            <h3>${esc(item.title)}</h3>
+            <div class="badge-row"><span class="badge ${cls}">${esc(item.score)}</span></div>
+            <p><strong>Files：</strong>${item.files.map(([file, line]) => `<code>${esc(sourceLabel(file, line))}</code>`).join(" ")}</p>
+            <p><strong>Problem：</strong>${esc(item.problem.replace("Problem: ", ""))}</p>
+            <p><strong>Solution：</strong>${esc(item.solution.replace("Solution: ", ""))}</p>
+            <p><strong>Benefits：</strong>${esc(item.benefits.replace("Benefits: ", ""))}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderFiles() {
+      document.getElementById("file-list").innerHTML = report.files.map(([file, line, label]) => `
+        <a class="file-link searchable" data-tags="${esc(`${file} ${line} ${label}`)}" href="${sourceHref(file)}">
+          ${esc(label)}<br><strong>${esc(sourceLabel(file, line))}</strong>
+        </a>
+      `).join("");
+    }
+
+    function applySearch() {
+      const q = state.query.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll(".searchable").forEach((node) => {
+        const text = `${node.textContent} ${node.getAttribute("data-tags") || ""}`.toLowerCase();
+        const ok = !q || text.includes(q);
+        node.style.display = ok ? "" : "none";
+        if (ok && node.closest(".section.active")) visible += 1;
+      });
+      document.getElementById("empty").style.display = q && visible === 0 ? "block" : "none";
+    }
+
+    function setSection(id) {
+      state.section = id;
+      document.querySelectorAll(".section").forEach((section) => {
+        section.classList.toggle("active", section.id === id);
+      });
+      document.querySelectorAll(".nav button").forEach((button) => {
+        button.classList.toggle("active", button.dataset.section === id);
+      });
+      document.getElementById("section-title").textContent = titleMap[id];
+      applySearch();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll(".nav button").forEach((button) => {
+        button.addEventListener("click", () => setSection(button.dataset.section));
+      });
+      document.getElementById("search").addEventListener("input", (event) => {
+        state.query = event.target.value;
+        applySearch();
+      });
+      document.getElementById("flow-filters").addEventListener("click", (event) => {
+        const button = event.target.closest("[data-flow-type]");
+        if (!button) return;
+        state.flowType = button.dataset.flowType;
+        renderFlowFilters();
+        renderFlows();
+        bindFlowFiltersOnly();
+        applySearch();
+      });
+    }
+
+    function bindFlowFiltersOnly() {
+      const filters = document.getElementById("flow-filters");
+      filters.onclick = (event) => {
+        const button = event.target.closest("[data-flow-type]");
+        if (!button) return;
+        state.flowType = button.dataset.flowType;
+        renderFlowFilters();
+        renderFlows();
+        bindFlowFiltersOnly();
+        applySearch();
+      };
+    }
+
+    function init() {
+      renderModules();
+      renderFlowFilters();
+      renderFlows();
+      renderFeatures();
+      renderOpportunities();
+      renderFiles();
+      bindEvents();
+      applySearch();
+    }
+
+    init();
+  </script>
+</body>
+</html>
