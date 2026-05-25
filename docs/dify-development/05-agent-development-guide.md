@@ -9,7 +9,7 @@
 1. 阅读 [README.md](./README.md) 和 [00-api-blocking-node-skeleton.md](./00-api-blocking-node-skeleton.md)。
 2. 确认所有 workflow 都使用 API blocking。
 3. 确认所有 Start 节点只声明 `payload: json_object`。
-4. 先搭通一个 workflow 的完整骨架：Start、normalize Code、LLM、finalize Code、End。
+4. 先搭通一个 workflow 的完整骨架：Start、normalize Code、If/Else、Template Transform、LLM、finalize Code、Variable Aggregator、End。
 5. 再并行开发四个 workflow 的 Prompt 和校验逻辑。
 6. 最后统一跑 blocking API 验收。
 
@@ -31,6 +31,9 @@
 - API 请求形态。
 - Start 节点字段。
 - Code outputs 类型约束。
+- If/Else 输入门禁规则。
+- Template Transform 上下文模板风格。
+- Variable Aggregator 分支汇合方式。
 - End outputs 字段名。
 - 兜底输出。
 - 临时字段禁用规则。
@@ -40,18 +43,24 @@
 每个 workflow agent 必须完成：
 
 1. 配置 Start：只接收 `payload`。
-2. 配置 normalize Code：提取 payload 并输出 LLM 输入。
-3. 配置 LLM：只输出 JSON。
-4. 配置 finalize Code：解析、校验、兜底。
-5. 配置 End：只声明正式字段。
-6. 用成功样例运行 blocking API。
-7. 用空输入或弱相关样例运行 blocking API。
-8. 人工检查 `data.outputs` 中没有临时字段。
+2. 配置 normalize Code：提取 payload，输出 LLM 输入、`has_required_context` 和兜底字段。
+3. 配置 If/Else：输入不足时跳过 LLM，直接进入汇合节点。
+4. 配置 Template Transform：把消息、摘要、画像和 schema 规则拼成 LLM 上下文。
+5. 配置 LLM：只输出 JSON。
+6. 配置 finalize Code：解析、校验、兜底。
+7. 配置 Variable Aggregator：优先合并 finalize 输出，兜底合并 normalize 输出。
+8. 配置 End：只声明正式字段。
+9. 用成功样例运行 blocking API。
+10. 用空输入或弱相关样例运行 blocking API。
+11. 人工检查 `data.outputs` 中没有临时字段。
 
 ## 4. Dify 配置注意事项
 
 - Code 节点语言只能用 `python3` 或 `javascript`。
 - Code 节点 outputs 必须和 `main()` 返回 key 完全一致。
+- Code 只承担 normalize 和 finalize 两类职责；上下文拼装优先放到 Template Transform。
+- Variable Aggregator 只做分支变量汇合，不做 `payload` 字段提取。
+- Parameter Extractor 只用于自然语言抽参，不用于解析业务 JSON。
 - End outputs 不要声明 `result`、`output`、`text`。
 - LLM 节点不要把解释、分析过程、Markdown 包裹或代码块输出到最终 JSON。
 - 如果模型容易输出代码块，finalize Code 必须能剥离 ```json 包裹后再解析。
@@ -106,4 +115,3 @@
 - 所有 `userid` 引用来自输入。
 - Dify 不写库、不发企微、不处理重试。
 - 输出中没有 `cs`、`huihua`、`ceshiziduan`、`result_text`。
-

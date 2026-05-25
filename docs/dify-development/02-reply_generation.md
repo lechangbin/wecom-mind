@@ -70,10 +70,24 @@ Start 节点只声明：
 ```text
 Start(payload)
   -> Code: normalize_reply_input
-  -> LLM: generate_reply
-  -> Code: finalize_reply
-  -> End(action, reply, metadata, confidence)
+  -> If/Else: can_reply
+    true  -> Template Transform: build_reply_context
+          -> Parameter Extractor: extract_reply_request (optional)
+          -> LLM: generate_reply
+          -> Code: finalize_reply
+          -> Variable Aggregator: reply_outputs
+          -> End(action, reply, metadata, confidence)
+    false -> Variable Aggregator: reply_outputs
+          -> End(action, reply, metadata, confidence)
 ```
+
+节点原则：
+
+- `normalize_reply_input` 只做 payload 字段读取、默认值、证据集合和兜底字段。
+- `can_reply` 在 `reply_instruction` 为空、上下文为空或证据不合法时直接走兜底。
+- `build_reply_context` 用 Template Transform 组织最近消息、会话摘要、用户画像和发送边界。
+- `extract_reply_request` 只在 `user_message` 或人工指令足够自然语言化时启用，用于抽取请求类型、语气、长度等辅助变量；它不解析 `payload`，也不决定最终输出。
+- `reply_outputs` 使用 grouped aggregation 或多个 Variable Aggregator，优先取 `finalize_reply` 输出，未进入 LLM 时取 `normalize_reply_input` 的兜底字段。
 
 ### normalize_reply_input
 
@@ -91,6 +105,12 @@ Start(payload)
 - `conversation_summary: object`
 - `user_profile: object`
 - `runtime: object`
+- `valid_msgids: array[string]`
+- `has_required_context: boolean`
+- `fallback_action: string`
+- `fallback_reply: object`
+- `fallback_metadata: object`
+- `fallback_confidence: number`
 - `fallback: object`
 
 归一化规则：
@@ -99,6 +119,47 @@ Start(payload)
 - `runtime.language` 缺失时默认 `zh-CN`。
 - `recent_messages` 不是数组时视为空数组。
 - `evidence_msgids` 只保留出现在 `recent_messages[].msgid` 中的值。
+- `fallback_action` 固定为 `ignore`。
+- `fallback_reply` 默认保持为 `null`，与最终兜底输出一致；如果 Dify Variable Aggregator 的 object 类型不接受 `null`，该字段可不走聚合器，改由兜底分支直接进入 finalize 或 End。
+- `has_required_context` 在存在 `reply_instruction` 且有 `source_msgid` 或至少一条最近消息时为 `true`。
+
+### build_reply_context
+
+Template Transform 输入：
+
+- `reply_scene`
+- `chatid`
+- `source_msgid`
+- `request_userid`
+- `target_userids`
+- `user_message`
+- `reply_instruction`
+- `evidence_msgids`
+- `recent_messages`
+- `conversation_summary`
+- `user_profile`
+- `runtime`
+
+输出：
+
+- `output: string`
+
+模板内容必须明确：本 workflow 是唯一可生成可发送正文的流程；正文不得包含系统说明、JSON schema 或推理过程。
+
+### extract_reply_request (optional)
+
+Parameter Extractor 可选输出：
+
+- `intent_type: string`
+- `tone: string`
+- `length: string`
+- `language: string`
+
+使用限制：
+
+- 只从 `user_message` 或 `reply_instruction` 这样的自然语言字段抽取。
+- 抽取结果只作为 LLM 辅助输入，不能绕过 `finalize_reply` 校验。
+- 为降低延迟，常规 proactive 回复可以跳过该节点。
 
 ### generate_reply
 
@@ -211,4 +272,3 @@ End 节点声明：
 - `reply.content` 包含 JSON 说明、推理过程或不可发送文本。
 - `metadata.evidence_msgids` 引用不存在的消息。
 - `intent_detection` 以外的工作流绕过本工作流输出正文。
-

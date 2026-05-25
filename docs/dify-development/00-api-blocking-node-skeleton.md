@@ -43,17 +43,30 @@ Content-Type: application/json
 | type | `json_object` |
 | required | `true` |
 
-Dify 1.14.2 不接受 Start 变量类型 `json`。复杂业务字段统一放入 `payload` 对象中，由 Code 节点提取。
+Dify 1.14.2 不接受 Start 变量类型 `json`。复杂业务字段统一放入 `payload` 对象中，由最小化的 normalize Code 节点提取；输入门禁、上下文拼装和分支汇合优先使用 Dify 官方预置节点。
 
 ## 3. 推荐节点链路
+
+默认采用“官方节点优先”的可视化链路：
 
 ```text
 Start(payload)
   -> Code: normalize_input
-  -> LLM: business_reasoning
-  -> Code: finalize_json
-  -> End
+  -> If/Else: input_gate
+    true  -> Template Transform: build_llm_context
+          -> LLM: business_reasoning
+          -> Code: finalize_json
+          -> Variable Aggregator: merge_outputs
+          -> End
+    false -> Variable Aggregator: merge_outputs
+          -> End
 ```
+
+可裁剪规则：
+
+- 如果输入永远由自建系统保证完整，可以省略 `If/Else`，但仍建议保留兜底验收。
+- 如果 workflow 只有单一路径，可以省略 `Variable Aggregator`，直接从 `finalize_json` 到 End。
+- 不要为了可视化删除 `finalize_json`，最终 JSON 解析、证据校验和兜底必须确定性执行。
 
 ### Code: normalize_input
 
@@ -63,13 +76,42 @@ Start(payload)
 - 校验必填字段的基本类型。
 - 将缺失的数组字段归一化为空数组。
 - 将缺失的对象字段归一化为 `null` 或空对象。
-- 只输出 LLM 需要的结构化变量。
+- 输出 LLM 需要的结构化变量。
+- 输出 `has_required_context: boolean`，供 `If/Else` 分流。
+- 输出 workflow 对应的兜底字段，例如 `fallback_actions`、`fallback_segments` 或 `fallback_result`。
 
 要求：
 
 - Code language 使用 `python3` 或 `javascript`。
 - Code outputs 只使用 Dify 支持类型：`string`、`number`、`object`、`boolean`、`array[string]`、`array[number]`、`array[object]`、`array[boolean]`。
 - Code 返回 key 必须和 outputs 声明完全一致。
+
+### If/Else: input_gate
+
+职责：
+
+- 根据 `normalize_input.has_required_context` 判断是否进入 LLM。
+- 空输入、消息不足、缺少 `userid` 等场景直接走兜底分支。
+
+要求：
+
+- If 分支进入 `Template Transform` 和 LLM。
+- Else 分支直接进入 `Variable Aggregator`。
+- 不在 If/Else 里做复杂业务判断；复杂判断仍由 LLM 或 finalize Code 完成。
+
+### Template Transform: build_llm_context
+
+职责：
+
+- 使用 Jinja2 模板把消息列表、画像摘要、会话摘要、合法 ID 集合整理成 LLM 可读上下文。
+- 把输出 schema、边界规则和兜底规则拆成清晰文本片段。
+- 输出单个 `output: string`，供 LLM 引用。
+
+要求：
+
+- Template Transform 只负责格式化，不负责事实判断。
+- 不要在模板里生成最终业务 JSON。
+- 数组和对象仍以 normalize Code 输出的结构化变量为准。
 
 ### LLM: business_reasoning
 
@@ -106,6 +148,19 @@ Start(payload)
 - `confidence` 超出 0 到 1 时必须夹取或兜底。
 - LLM 输出无法解析时必须返回对应 workflow 的兜底结果。
 
+### Variable Aggregator: merge_outputs
+
+职责：
+
+- 汇合成功分支和兜底分支。
+- 优先选择 `finalize_json` 输出；如果 LLM 分支未执行，则选择 `normalize_input` 的兜底字段。
+
+要求：
+
+- 聚合变量必须是同类型，例如 `array[object]` 对 `array[object]`、`string` 对 `string`。
+- 多字段 workflow 可使用 grouped aggregation，或为每个 End 字段单独配置一个 Variable Aggregator。
+- Variable Aggregator 不是字段提取节点，不要用它解析 `payload`。
+
 ## 4. End 节点
 
 End 节点 outputs 必须直接声明正式业务字段。
@@ -139,4 +194,3 @@ End 节点 outputs 必须直接声明正式业务字段。
 ```
 
 `outputs` 必须已经是正式字段结构。
-

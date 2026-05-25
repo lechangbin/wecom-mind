@@ -493,7 +493,7 @@
         <div class="chips">
           <span class="chip blue">/v1/workflows/run</span>
           <span class="chip teal">Start: payload</span>
-          <span class="chip green">LLM + Code</span>
+          <span class="chip green">官方节点 + LLM + Code</span>
           <span class="chip amber">Blocking 验收</span>
         </div>
       </section>
@@ -595,7 +595,15 @@
             </div>
             <div class="step">
               <b>Code normalize</b>
-              <p>提取字段、归一化数组、生成 LLM 输入和 fallback。</p>
+              <p>最小化提取字段、归一化类型、生成合法 ID 集合和兜底字段。</p>
+            </div>
+            <div class="step">
+              <b>If/Else gate</b>
+              <p>空输入、证据不足、缺少 userid 时直接走兜底。</p>
+            </div>
+            <div class="step">
+              <b>Template Transform</b>
+              <p>拼装消息时间线、画像摘要、schema 规则和 LLM 上下文。</p>
             </div>
             <div class="step">
               <b>LLM</b>
@@ -604,6 +612,10 @@
             <div class="step">
               <b>Code finalize</b>
               <p>解析 JSON、校验证据和用户、兜底异常输出。</p>
+            </div>
+            <div class="step">
+              <b>Variable Aggregator</b>
+              <p>汇合成功分支和兜底分支，输出正式字段。</p>
             </div>
             <div class="step">
               <b>End</b>
@@ -709,7 +721,8 @@
             <h4>串行前置</h4>
             <div class="lane">
               <div class="node primary">统一 Start payload</div>
-              <div class="node primary">统一 Code outputs 类型</div>
+              <div class="node primary">统一官方节点优先拓扑</div>
+              <div class="node primary">统一 normalize/finalize Code 边界</div>
               <div class="node primary">统一 End 正式字段</div>
               <div class="node primary">统一 blocking API 验收</div>
             </div>
@@ -717,10 +730,10 @@
           <div class="panel">
             <h4>可并行开发</h4>
             <div class="lane">
-              <div class="node ai">intent_detection Prompt 与 finalize</div>
-              <div class="node ai">reply_generation Prompt 与 finalize</div>
-              <div class="node ai">conversation_segmentation Prompt 与 finalize</div>
-              <div class="node ai">user_profile_analysis Prompt 与 finalize</div>
+              <div class="node ai">intent_detection 节点流、Prompt 与 finalize</div>
+              <div class="node ai">reply_generation 节点流、Prompt 与 finalize</div>
+              <div class="node ai">conversation_segmentation 节点流、Prompt 与 finalize</div>
+              <div class="node ai">user_profile_analysis 节点流、Prompt 与 finalize</div>
             </div>
           </div>
         </div>
@@ -732,6 +745,7 @@
           <li>Dify API 响应不是 <code>data.status=succeeded</code> 时，自建系统必须记录失败，不消费 outputs。</li>
           <li>outputs 缺字段、字段类型不匹配、引用不存在的 msgid 或 userid 时，必须进入 invalid_output。</li>
           <li>Webhook ack 不是业务 outputs，在没有结果回收机制前不能作为主链路。</li>
+          <li>Variable Aggregator 只用于分支汇合，不能替代 payload 字段提取和 JSON schema 校验。</li>
           <li>LLM 输出 JSON 外说明文字时，finalize Code 必须解析或兜底，不能让散文进入 End。</li>
         </ul>
       </section>

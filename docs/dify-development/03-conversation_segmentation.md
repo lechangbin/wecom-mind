@@ -65,10 +65,22 @@ Start 节点只声明：
 ```text
 Start(payload)
   -> Code: normalize_segmentation_input
-  -> LLM: segment_conversation
-  -> Code: finalize_segments
-  -> End(segments)
+  -> If/Else: has_enough_messages
+    true  -> Template Transform: build_timeline_context
+          -> LLM: segment_conversation
+          -> Code: finalize_segments
+          -> Variable Aggregator: segments_output
+          -> End(segments)
+    false -> Variable Aggregator: segments_output
+          -> End(segments)
 ```
+
+节点原则：
+
+- `normalize_segmentation_input` 只做 payload 字段读取、消息过滤、合法 ID 集合和兜底输出。
+- `has_enough_messages` 在有效消息不足两条时直接走兜底，避免无意义 LLM 调用。
+- `build_timeline_context` 用 Template Transform 展示时间线、候选边界、上一会话和输出规则。
+- `segments_output` 优先聚合 `finalize_segments.segments`，未进入 LLM 时聚合 `normalize_segmentation_input.fallback_segments`。
 
 ### normalize_segmentation_input
 
@@ -81,6 +93,8 @@ Start(payload)
 - `previous_conversation: object`
 - `valid_msgids: array[string]`
 - `valid_userids: array[string]`
+- `has_required_context: boolean`
+- `fallback_segments: array[object]`
 - `fallback: object`
 
 归一化规则：
@@ -89,6 +103,26 @@ Start(payload)
 - 过滤没有 `msgid` 的消息。
 - `valid_msgids` 按输入顺序生成。
 - `valid_userids` 来自 `messages[].userid`，去重。
+- `fallback_segments` 固定为空数组。
+- `has_required_context` 在有效消息不少于两条时为 `true`。
+
+### build_timeline_context
+
+Template Transform 输入：
+
+- `chatid`
+- `window`
+- `messages`
+- `candidate_boundaries`
+- `previous_conversation`
+- `valid_msgids`
+- `valid_userids`
+
+输出：
+
+- `output: string`
+
+模板内容必须按时间顺序展示消息，并显式列出合法 `start_msgid/end_msgid` 和合法参与人集合。
 
 ### segment_conversation
 
@@ -186,4 +220,3 @@ End 节点只声明：
 - 输出交叉区间。
 - 输出不存在的参与人。
 - 输出 `conversation_no`，覆盖自建系统职责。
-

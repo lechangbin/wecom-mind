@@ -12,7 +12,7 @@
 | API 路径 | `/v1/workflows/run` |
 | Dify Start 输入 | 只声明一个 `payload` |
 | `payload` 类型 | `json_object` |
-| Dify 内部路线 | `Start -> Code 输入规范化 -> LLM -> Code JSON 校验与兜底 -> End` |
+| Dify 内部路线 | 官方节点优先：`Start -> Code 最小规范化 -> If/Else -> Template Transform -> LLM -> Code JSON 校验与兜底 -> Variable Aggregator -> End` |
 | Webhook | 不作为本阶段主链路；异步结果回收后续再设计 |
 | 输出格式 | End outputs 直接是正式业务字段 |
 
@@ -49,6 +49,7 @@ Dify Start 节点只声明：
 | [03-conversation_segmentation.md](./03-conversation_segmentation.md) | 智能会话切分工作流 |
 | [04-user_profile_analysis.md](./04-user_profile_analysis.md) | 用户画像生成与更新工作流 |
 | [05-agent-development-guide.md](./05-agent-development-guide.md) | 后续 agent 分工、并行开发和验收流程 |
+| [06-node-first-visual-composition.md](./06-node-first-visual-composition.md) | 官方节点优先的可视化编排和 Code 替换边界 |
 
 ## 通用边界
 

@@ -92,10 +92,22 @@ Start 节点只声明：
 ```text
 Start(payload)
   -> Code: normalize_profile_input
-  -> LLM: analyze_profile_delta
-  -> Code: finalize_profile
-  -> End(userid, profile_action, summary, facts_to_add, facts_to_update, facts_to_retire, confidence)
+  -> If/Else: has_userid_and_evidence
+    true  -> Template Transform: build_profile_context
+          -> LLM: analyze_profile_delta
+          -> Code: finalize_profile
+          -> Variable Aggregator: profile_outputs
+          -> End(userid, profile_action, summary, facts_to_add, facts_to_update, facts_to_retire, confidence)
+    false -> Variable Aggregator: profile_outputs
+          -> End(userid, profile_action, summary, facts_to_add, facts_to_update, facts_to_retire, confidence)
 ```
+
+节点原则：
+
+- `normalize_profile_input` 只做 payload 字段读取、证据集合、当前事实集合和兜底字段。
+- `has_userid_and_evidence` 在 `userid` 缺失、近期消息和会话摘要都为空时直接走兜底。
+- `build_profile_context` 用 Template Transform 拼装近期消息、会话摘要、当前画像、统计特征和敏感信息约束。
+- `profile_outputs` 使用 grouped aggregation 或多个 Variable Aggregator，优先取 `finalize_profile` 输出，未进入 LLM 时取 `normalize_profile_input` 的兜底字段。
 
 ### normalize_profile_input
 
@@ -110,6 +122,14 @@ Start(payload)
 - `valid_msgids: array[string]`
 - `valid_conversation_nos: array[string]`
 - `current_fact_ids: array[string]`
+- `has_required_context: boolean`
+- `fallback_userid: string`
+- `fallback_profile_action: string`
+- `fallback_summary: string`
+- `fallback_facts_to_add: array[object]`
+- `fallback_facts_to_update: array[object]`
+- `fallback_facts_to_retire: array[object]`
+- `fallback_confidence: number`
 - `fallback: object`
 
 归一化规则：
@@ -119,6 +139,28 @@ Start(payload)
 - `current_profile` 缺失时视为 `null`。
 - `current_fact_ids` 来自 `current_profile.facts[].fact_id`。
 - 兜底输出中的 `userid` 必须使用输入 `userid`。
+- `has_required_context` 在存在 `userid` 且近期消息或会话摘要至少一项不为空时为 `true`。
+- 各 `fallback_*` 字段必须与兜底输出逐字段一致。
+
+### build_profile_context
+
+Template Transform 输入：
+
+- `userid`
+- `profile_version`
+- `recent_messages`
+- `conversation_summaries`
+- `current_profile`
+- `statistics`
+- `valid_msgids`
+- `valid_conversation_nos`
+- `current_fact_ids`
+
+输出：
+
+- `output: string`
+
+模板内容必须把当前画像、可更新事实 ID、合法证据消息、合法会话编号和敏感信息保守规则分区展示。
 
 ### analyze_profile_delta
 
@@ -256,4 +298,3 @@ End 节点声明：
 - 更新或退役不存在的 `fact_id`。
 - 用历史证据消息替代本次 `recent_messages` 证据。
 - 把敏感、模糊或单次偶然表达写成确定画像事实。
-
