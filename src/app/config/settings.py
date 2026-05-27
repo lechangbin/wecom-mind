@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     wecom_aibot_ws_url: str | None = None
     wecom_aibot_name: str | None = None
     wecom_mcp_verify_mode: Literal["mock", "real"] = "mock"
-    wecom_sender_mode: Literal["mock", "app", "webhook"] = "mock"
+    wecom_sender_mode: Literal["mock", "app", "webhook", "aibot_ws"] = "mock"
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com/cgi-bin"
     wecom_agent_id: str | None = None
     wecom_timeout_seconds: int = 10

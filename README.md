@@ -1,6 +1,6 @@
 # 基于自建系统 + Dify 的企微机器人
 
-当前已完成阶段 12：消息入库任务处理器 MVP。
+当前分支：企业微信智能机器人长连接实机测试版，基于 `v0.1-dify-ai-baseline` 后续更新。
 
 ## 已实现范围
 
@@ -20,8 +20,8 @@
 
 - ORM 数据表：`wecom_chats`、`wecom_users`、`wecom_mcp_callbacks`、`wecom_mcp_pull_cursors`、`message_ingestion_jobs`、`messages_raw`、`messages`。
 - 应用启动时自动 `create_all` 建表，继续兼容默认 SQLite。
-- `POST /api/wecom/callbacks/mcp`：保存 query/body、生成 `callback_id`、保存幂等键和状态，并为新回调创建待处理入库/拉取任务。
-- 回调接口通过 `WeComCallbackVerifier` 抽象验证来源；默认是 mock verifier，real 模式支持企业微信 URL 验证、签名校验和 AES 解密。
+- 旧 `POST /api/wecom/callbacks/mcp` 仅作为兼容入口保留，不再作为当前主接收链路。
+- 当前主接收链路为企业微信智能机器人长连接 Worker，收到消息后标准化为 `MessageIngestRequest` 并复用入库逻辑。
 - `POST /api/wecom/messages/ingest`：保存 `messages_raw`，生成 `messages` 标准化记录。
 - 文本消息标准化、quote 保存、机器人 @ 识别、群聊和用户基础信息/活跃时间更新。
 - 同一 `idempotency_key` 或同一 `source + external_msgid` 重复入库时返回 `duplicated=true`，不重复写入核心表。
@@ -114,6 +114,7 @@
 - 新增 `WeComApiClient`，支持 `gettoken`、access_token 缓存、提前 5 分钟刷新、token 失效刷新重试、`errcode=-1` 简单重试。
 - `WECOM_SENDER_MODE=app` 时使用 `WeComAppMessageSender`，支持 `/message/send` 应用消息和 `/appchat/send` 应用群聊消息。
 - `WECOM_SENDER_MODE=webhook` 时使用 `WeComWebhookMessageSender`，直接调用群机器人 webhook，不获取 access_token。
+- `WECOM_SENDER_MODE=aibot_ws` 时使用智能机器人长连接发送，建议由 worker 持有同一条长连接执行发送。
 - 真实 sender 统一返回 outbox 发送模块可识别的 `success/external_msgid/raw_response/error_code/error_message` 结构。
 - 发送失败不会丢失 outbox 审计信息，仍由 `send_outbox_message` 标记 `failed` 并保存错误和原始响应。
 
@@ -134,7 +135,15 @@
 - 支持查询 ingestion jobs、手动执行单个 normalize job、批量执行 pending normalize jobs。
 - job 状态支持 `running/succeeded/skipped/failed` 流转，并同步更新 callback 的 `processed/failed` 状态和错误信息。
 
-当前仍不包含真实企微消息拉取 API、真实定时器、Dify streaming、自动业务流水线、复杂权限、统计宽表、后台统计大屏和前端。
+阶段 14 企业微信智能机器人长连接实机链路：
+
+- 新增 `AiBotFrameNormalizer`，将长连接 SDK frame 转成现有 `MessageIngestRequest`。
+- 新增 `process_incoming_aibot_frame()`，完成 `ingest_message -> evaluate_triggers -> Dify -> outbox -> send` 的 @ 消息闭环。
+- 新增 `WeComAiBotWsMessageSender`，支持通过 SDK `send_message(chatid, body)` 发送 markdown/template_card。
+- 新增 `WeComAiBotLongConnectionWorker` 和 `scripts/run_wecom_aibot_worker.py`，用于本地启动长连接常驻进程。
+- 非 @ 消息只入库，不立即调用 Dify 或发送；主动提醒仍通过 `/api/proactive-replies/run` 扫描本地消息窗口。
+
+当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息拉取仍作为补漏能力后续接入，不作为主接收入口。
 
 ## 本地启动
 
@@ -218,11 +227,34 @@ WECOM_TIMEOUT_SECONDS=10
 
 webhook 模式不调用 `gettoken`，text 消息会把 `target_userids` 映射为 `mentioned_list`。
 
+启用企业微信智能机器人长连接实机链路：
+
+```env
+WECOM_AIBOT_ID=your-bot-id
+WECOM_AIBOT_SECRET=your-bot-secret
+WECOM_AIBOT_NAME=机器人
+WECOM_SENDER_MODE=aibot_ws
+DIFY_CLIENT_MODE=real
+DIFY_BASE_URL=https://api.dify.ai/v1
+DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=your-group-reply-key
+DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-proactive-key
+```
+
+Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。
+
 3. 启动 API：
 
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --reload
 ```
+
+另开一个终端启动智能机器人长连接 worker：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_wecom_aibot_worker.py
+```
+
+实机链路为：测试群发消息 -> worker 入库 -> @ 消息触发 Dify -> 创建 outbox -> 长连接发送回复。
 
 4. 检查健康接口：
 

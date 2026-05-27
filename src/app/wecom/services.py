@@ -215,17 +215,32 @@ def _message_for_raw(session: Session, raw_message_id: int) -> Message:
 
 
 def _extract_content_text(raw_message: dict[str, Any], msgtype: str) -> str | None:
-    if msgtype != "text":
+    if msgtype not in {"text", "mixed"}:
         return None
     text = raw_message.get("text")
     if isinstance(text, dict):
         value = text.get("content")
         return str(value) if value is not None else ""
-    return str(text) if text is not None else ""
+    if text is not None:
+        return str(text)
+
+    mixed = raw_message.get("mixed")
+    if isinstance(mixed, dict):
+        items = mixed.get("items")
+        if isinstance(items, list):
+            parts = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                body = item.get("text")
+                if isinstance(body, dict) and body.get("content") is not None:
+                    parts.append(str(body["content"]))
+            return "".join(parts)
+    return ""
 
 
 def _normalized_content(msgtype: str, content_text: str | None) -> dict[str, Any]:
-    if msgtype == "text":
+    if msgtype in {"text", "mixed"}:
         return {"type": "text", "text": content_text or ""}
     return {"type": msgtype}
 

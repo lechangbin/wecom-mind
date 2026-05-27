@@ -12,21 +12,23 @@
 ```env
 DIFY_CLIENT_MODE=real
 DIFY_BASE_URL=http://localhost
-DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=app-zpVH2UV2yWWVHHj0zuLjOVvy
-DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=app-eZm0LQXA91nNaXHNu0UI6Zt8
+DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=your-group-knowledge-reply-key
+DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-chat-proactive-reminder-key
 DIFY_USER=wecom-bot-system
 ```
 
-企微真实发送需要同时配置：
+企微智能机器人长连接实机链路需要同时配置：
 
 ```env
-WECOM_SENDER_MODE=app
-WECOM_CORP_ID=
+WECOM_AIBOT_ID=
 WECOM_AIBOT_SECRET=
-WECOM_AGENT_ID=
+WECOM_AIBOT_NAME=机器人
+WECOM_SENDER_MODE=aibot_ws
 ```
 
-如果先用群机器人 Webhook 发送，可以改用：
+Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。
+
+如果先用群机器人 Webhook 发送，可以改用旧发送通道：
 
 ```env
 WECOM_SENDER_MODE=webhook
@@ -35,9 +37,29 @@ WECOM_GROUP_BOT_WEBHOOK_URL=
 
 ## @ 答疑测试
 
-1. 启动服务。
-2. 让企微回调或手动入库一条 `mentioned_bot=true` 的消息。
-3. 调用：
+1. 启动 API 服务。
+2. 启动长连接 worker：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_wecom_aibot_worker.py
+```
+
+3. 在测试群里 @ 机器人发送问题。
+
+长连接 worker 会自动完成：
+
+```text
+receive frame -> ingest_message -> evaluate_triggers -> Dify -> outbox -> aibot_ws send_message
+```
+
+成功后会生成：
+
+- `messages.source = aibot_ws`
+- `ai_runs.workflow_code = group_knowledge_reply`
+- `outbox_messages.scene = reply`
+- `outbox_messages.status = sent`
+
+仍可用手动接口调试已入库消息：
 
 ```http
 POST /api/triggers/evaluate
@@ -46,18 +68,6 @@ Content-Type: application/json
 {
   "message_id": 1
 }
-```
-
-成功后会生成：
-
-- `ai_runs.workflow_code = group_knowledge_reply`
-- `outbox_messages.scene = reply`
-- `outbox_messages.status = pending`
-
-然后调用：
-
-```http
-POST /api/outbox-messages/{outbox_id}/send
 ```
 
 ## 主动答疑测试
@@ -93,6 +103,5 @@ POST /api/outbox-messages/{outbox_id}/send
 
 ## 当前未自动化项
 
-- 企微回调入库后不会自动调用 `/api/triggers/evaluate`。
-- outbox 创建后不会自动发送，需要手动调用 send 接口或后续补调度器。
+- 非 @ 消息不会即时回复，主动答疑仍需要手动或调度调用 `/api/proactive-replies/run`。
 - `quote_msgid` 已保存到 outbox 内容中，但当前企微发送器还没有真正调用“引用消息”能力。

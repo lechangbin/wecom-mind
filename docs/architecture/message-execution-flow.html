@@ -347,7 +347,7 @@
   <header>
     <h1>消息接收后的执行链路</h1>
     <p>
-      这张图基于当前代码实现，而不是目标愿景。结论很直接：消息接收、归一化、Dify 判断、outbox 入队、企微发送这些 Module 都存在，但它们之间的 Interface 仍由人工调用串联，所以当前是“可实机测试”，不是“收到消息后全自动闭环”。
+      这张图基于当前长连接更新分支。结论很直接：智能机器人长连接 Worker 已经能把实时消息串到入库、@ 触发、Dify、outbox 和长连接发送；非 @ 消息仍只入库，主动提醒按窗口扫描手动或调度触发。
     </p>
     <div class="legend">
       <span class="tag"><span class="dot auto"></span>当前自动执行</span>
@@ -363,16 +363,16 @@
       <h2>1. 为什么现在未自动化</h2>
       <div class="answer-grid">
         <article class="fact">
-          <strong>回调只确认接收</strong>
-          <p><code>POST /api/wecom/callbacks/mcp</code> 完成验签、记录 callback，并创建 <code>MessageIngestionJob</code>。在 real 模式下它必须尽快返回 <code>success</code> 给企微，不能在这个请求里长时间跑 Dify 和发送。</p>
+          <strong>主入口已切到长连接</strong>
+          <p><code>scripts/run_wecom_aibot_worker.py</code> 持有智能机器人 WebSocket 长连接，实时接收消息 frame，不再依赖公网 HTTP callback 作为主链路。</p>
         </article>
         <article class="fact">
-          <strong>后续步骤都是独立 Interface</strong>
-          <p>归一化、触发评估、主动答疑、outbox 发送分别暴露为不同路由。代码里没有一个“收到消息后继续推进下一步”的 Orchestrator Module。</p>
+          <strong>@ 链路已自动推进</strong>
+          <p><code>process_incoming_aibot_frame</code> 已经把 @ 消息串成 <code>ingest_message -> evaluate_triggers -> Dify -> outbox -> send</code>。</p>
         </article>
         <article class="fact">
-          <strong>缺少后台 Worker</strong>
-          <p>系统有 pending job 和 pending outbox 的数据模型，但没有常驻 Worker 或调度器自动消费它们。没有消费者，队列表就只是状态记录。</p>
+          <strong>主动提醒仍是窗口任务</strong>
+          <p>非 @ 消息只入库，不即时回复；<code>chat_proactive_reminder</code> 仍通过窗口扫描触发，后续可加调度器。</p>
         </article>
       </div>
     </section>
@@ -382,39 +382,39 @@
       <div class="flow">
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
-          <h3>企微回调进入</h3>
-          <p><code>receive_mcp_callback</code> 验签、解密或解析 body。</p>
-          <small>src/app/api/wecom.py:42</small>
+          <h3>长连接收到 frame</h3>
+          <p><code>WeComAiBotLongConnectionWorker</code> 注册 <code>message.text</code> / <code>message.mixed</code> 等事件。</p>
+          <small>src/app/wecom/aibot.py</small>
         </article>
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
-          <h3>记录 callback</h3>
-          <p><code>record_mcp_callback</code> 写入 <code>wecom_mcp_callbacks</code>。</p>
-          <small>src/app/wecom/services.py:24</small>
-        </article>
-        <article class="node auto" style="grid-column: span 2;">
-          <span class="label">自动</span>
-          <h3>创建归一化 job</h3>
-          <p><code>_build_callback_job</code> 生成 pending 的 <code>MessageIngestionJob</code>。</p>
-          <small>src/app/wecom/services.py:157</small>
-        </article>
-        <article class="node manual" style="grid-column: span 2;">
-          <span class="label">手动</span>
-          <h3>运行 ingestion job</h3>
-          <p>需要调用 <code>/api/wecom/ingestion-jobs/run</code> 或单个 job run。</p>
-          <small>src/app/api/wecom.py:89</small>
+          <h3>标准化 frame</h3>
+          <p><code>AiBotFrameNormalizer</code> 转成 <code>MessageIngestRequest</code>，不编造 msgid/userid。</p>
+          <small>src/app/wecom/aibot.py</small>
         </article>
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
           <h3>消息入库</h3>
           <p><code>ingest_message</code> 写 <code>MessageRaw</code>、<code>Message</code>、群、用户，并计算 <code>mentioned_bot</code>。</p>
-          <small>src/app/wecom/services.py:80</small>
+          <small>src/app/wecom/services.py</small>
+        </article>
+        <article class="node manual" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>@ 触发 Dify</h3>
+          <p>@ 消息自动调用 <code>evaluate_triggers</code>，进入 <code>group_knowledge_reply</code>。</p>
+          <small>src/app/triggers/services.py</small>
+        </article>
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>创建 outbox</h3>
+          <p>Dify 合法输出后创建 reply outbox，保持发送前审计和幂等。</p>
+          <small>src/app/outbound/services.py</small>
         </article>
         <article class="node risk last" style="grid-column: span 2;">
-          <span class="label">断点</span>
-          <h3>没有自动下游</h3>
-          <p>消息入库后不会自动调用 Dify，也不会自动发送 outbox。</p>
-          <small>当前缺少 Orchestrator / Worker</small>
+          <span class="label">自动</span>
+          <h3>长连接发送</h3>
+          <p><code>WeComAiBotWsMessageSender</code> 通过 SDK <code>send_message</code> 发回企微，并回写 sent/failed。</p>
+          <small>src/app/outbound/sender.py</small>
         </article>
       </div>
     </section>
@@ -509,8 +509,8 @@
         <div class="lane-body">
           <div class="lane-flow">
             <article class="node auto">
-              <h3>回调落库</h3>
-              <p>必须先有 callback/job，才能可靠重放。</p>
+              <h3>长连接 frame</h3>
+              <p>必须先收到真实 frame，才能保留原始 msgid/chatid/userid。</p>
             </article>
             <article class="node auto">
               <h3>消息归一化</h3>
@@ -533,8 +533,8 @@
         <div class="lane-body">
           <div class="lane-flow">
             <article class="node parallel">
-              <h3>不同 callback job</h3>
-              <p>不同群、不同 callback 的 normalize job 可并行，但同一 job 内当前按消息顺序处理。</p>
+              <h3>不同群消息</h3>
+              <p>不同群的 frame 可并行处理；同一 msgid 由入库幂等保护。</p>
             </article>
             <article class="node parallel">
               <h3>@ 分支与窗口分支</h3>
@@ -558,18 +558,18 @@
       <div class="flow">
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
-          <h3>企微回调</h3>
-          <p>继续快速返回 success，避免企微超时。</p>
+          <h3>AiBot 长连接 Worker</h3>
+          <p>常驻进程接收消息 frame，不需要公网 callback。</p>
         </article>
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
-          <h3>消息归一化 Worker</h3>
-          <p>消费 pending ingestion jobs，生成 Message。</p>
+          <h3>Frame Normalizer</h3>
+          <p>直接生成 <code>MessageIngestRequest</code>，复用入库模块。</p>
         </article>
         <article class="node future" style="grid-column: span 2;">
           <span class="label">新增</span>
-          <h3>Interaction Orchestrator</h3>
-          <p>一个深 Module：对外只暴露“处理新消息”Interface，内部决定哪些 AI 分支需要触发。</p>
+          <h3>Incoming Message Orchestrator</h3>
+          <p><code>process_incoming_aibot_frame</code> 决定是否触发 @ 答疑。</p>
         </article>
         <article class="node parallel" style="grid-column: span 2;">
           <span class="label">并行</span>
@@ -584,7 +584,7 @@
         <article class="node auto last" style="grid-column: span 2;">
           <span class="label">自动</span>
           <h3>企微发送</h3>
-          <p>reply/proactive 场景走群 <code>appchat/send</code>，状态回写。</p>
+          <p>reply/proactive 场景优先走智能机器人长连接 <code>send_message</code>，状态回写。</p>
         </article>
       </div>
     </section>
@@ -594,13 +594,13 @@
       <div class="candidate-grid">
         <article class="candidate">
           <span class="priority">P0 实机闭环</span>
-          <h3>新增 Interaction Orchestrator Module</h3>
-          <p>把“消息入库后应该触发哪些 Dify 分支”集中到一个 Interface 后面。收益是 Locality：触发规则、顺序、并行、幂等都在一处维护。</p>
+          <h3>完善主动提醒调度</h3>
+          <p>现在 @ 链路已自动闭环，下一步是让非 @ 窗口扫描由调度器触发。</p>
         </article>
         <article class="candidate">
           <span class="priority">P0 实机闭环</span>
-          <h3>新增两个 Worker Adapter</h3>
-          <p>一个消费 <code>MessageIngestionJob</code>，一个消费 <code>OutboxMessage</code>。收益是 Leverage：现有手动接口仍可保留，但自动化不依赖人工点击。</p>
+          <h3>补历史消息 Puller</h3>
+          <p>使用 <code>get_msg_chat_list</code> / <code>get_message</code> 做最近 7 天补漏，不作为主接收入口。</p>
         </article>
         <article class="candidate">
           <span class="priority">P1 稳定性</span>
@@ -613,10 +613,10 @@
     <section>
       <h2>7. 代码依据</h2>
       <ul class="source-list">
-        <li><code>src/app/api/wecom.py:42</code> 接收企微 callback，只记录并返回。</li>
-        <li><code>src/app/wecom/services.py:62</code> callback 后创建 pending ingestion job。</li>
-        <li><code>src/app/api/wecom.py:89</code> 归一化 job 目前通过独立接口运行。</li>
-        <li><code>src/app/triggers/services.py:15</code> @ 触发评估目前通过独立接口运行。</li>
+        <li><code>src/app/wecom/aibot.py</code> 长连接 frame 标准化、入库后编排、worker。</li>
+        <li><code>src/app/outbound/sender.py</code> <code>WeComAiBotWsMessageSender</code> 通过长连接发送。</li>
+        <li><code>scripts/run_wecom_aibot_worker.py</code> 本地实机测试启动入口。</li>
+        <li><code>src/app/triggers/services.py:15</code> @ 触发评估被 worker 自动调用。</li>
         <li><code>src/app/api/proactive_replies.py:13</code> 主动答疑窗口扫描目前通过独立接口运行。</li>
         <li><code>src/app/outbound/services.py:199</code> outbox 发送目前通过独立接口运行。</li>
       </ul>
