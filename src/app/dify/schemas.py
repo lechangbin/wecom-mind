@@ -1,3 +1,76 @@
+PAYLOAD_ONLY_INPUT_SCHEMA = {
+    "type": "object",
+    "required": ["payload"],
+    "properties": {
+        "payload": {"type": "object"},
+    },
+    "additionalProperties": False,
+}
+
+GROUP_KNOWLEDGE_REPLY_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["action", "content", "reason", "confidence"],
+    "properties": {
+        "action": {"type": "string", "enum": ["reply", "out_of_scope"]},
+        "content": {"type": "string"},
+        "reason": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+    "additionalProperties": True,
+    "allOf": [
+        {
+            "if": {
+                "required": ["action"],
+                "properties": {"action": {"const": "reply"}},
+            },
+            "then": {
+                "properties": {"content": {"type": "string", "minLength": 1}},
+            },
+        },
+        {
+            "if": {
+                "required": ["action"],
+                "properties": {"action": {"const": "out_of_scope"}},
+            },
+            "then": {
+                "properties": {"content": {"const": ""}},
+            },
+        },
+    ],
+}
+
+CHAT_PROACTIVE_REMINDER_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["should_send", "target_userids", "quote_msgid", "content", "confidence"],
+    "properties": {
+        "should_send": {"type": "boolean"},
+        "target_userids": {"type": "array", "items": {"type": "string"}},
+        "quote_msgid": {"type": "string"},
+        "content": {"type": "string"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+    "additionalProperties": True,
+    "allOf": [
+        {
+            "if": {
+                "required": ["should_send"],
+                "properties": {"should_send": {"const": True}},
+            },
+            "then": {
+                "properties": {
+                    "target_userids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                    },
+                    "quote_msgid": {"type": "string", "minLength": 1},
+                    "content": {"type": "string", "minLength": 1},
+                },
+            },
+        }
+    ],
+}
+
 REPLY_GENERATION_INPUT_SCHEMA = {
     "type": "object",
     "required": [

@@ -48,7 +48,7 @@ class WeComAppMessageSender:
 
     def send(self, outbox: OutboxMessage) -> dict[str, Any]:
         payload = _app_payload(outbox, agent_id=self.agent_id)
-        path = "/message/send" if outbox.target_userids else "/appchat/send"
+        path = _app_send_path(outbox)
         try:
             raw_response = self.api_client.request("POST", path, json=payload)
         except WeComApiError as exc:
@@ -109,7 +109,7 @@ def build_wecom_message_sender(settings: Settings) -> WeComMessageSender:
 
 def _app_payload(outbox: OutboxMessage, *, agent_id: str) -> dict[str, Any]:
     content = _message_content(outbox)
-    if outbox.target_userids:
+    if outbox.target_userids and not _should_send_to_appchat(outbox):
         payload = {
             "touser": "|".join(str(userid) for userid in outbox.target_userids),
             "agentid": agent_id,
@@ -123,6 +123,14 @@ def _app_payload(outbox: OutboxMessage, *, agent_id: str) -> dict[str, Any]:
             outbox.msgtype: {"content": content},
         }
     return payload
+
+
+def _app_send_path(outbox: OutboxMessage) -> str:
+    return "/appchat/send" if _should_send_to_appchat(outbox) else "/message/send"
+
+
+def _should_send_to_appchat(outbox: OutboxMessage) -> bool:
+    return outbox.scene in {"reply", "proactive"} or not outbox.target_userids
 
 
 def _webhook_payload(outbox: OutboxMessage) -> dict[str, Any]:

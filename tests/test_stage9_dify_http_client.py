@@ -78,7 +78,7 @@ def test_real_mode_requires_base_url_and_api_key():
         )
 
     assert "DIFY_BASE_URL" in str(exc.value)
-    assert "DIFY_API_KEY" in str(exc.value)
+    assert "Dify API key" in str(exc.value)
 
 
 def test_real_client_parses_outputs_object_directly():
@@ -333,7 +333,7 @@ def test_existing_workflow_marks_ai_run_failed_when_real_dify_errors(tmp_path):
 
     assert evaluate_response.status_code == 200
     with app.state.SessionLocal() as session:
-        run = session.scalar(select(AiRun).where(AiRun.workflow_code == "reply_generation"))
+        run = session.scalar(select(AiRun).where(AiRun.workflow_code == "group_knowledge_reply"))
         outbox_count = session.scalar(select(func.count()).select_from(OutboxMessage))
 
         assert run.status == "failed"
@@ -358,15 +358,8 @@ def test_existing_workflow_saves_ai_run_success_when_webhook_returns_outputs(tmp
                     "status": "succeeded",
                     "outputs": {
                         "action": "reply",
-                        "reply": {
-                            "reply_type": "markdown",
-                            "content": "你好",
-                        },
-                        "metadata": {
-                            "reply_scene": "mention",
-                            "intent_type": "summary_request",
-                            "evidence_msgids": ["MSG_STAGE9_WEBHOOK"],
-                        },
+                        "content": "你好",
+                        "reason": "测试输出",
                         "confidence": 0.9,
                     },
                 }
@@ -380,9 +373,9 @@ def test_existing_workflow_saves_ai_run_success_when_webhook_returns_outputs(tmp
 
     with app.state.SessionLocal() as session:
         workflow_record = session.scalar(
-            select(AiWorkflow).where(AiWorkflow.workflow_code == "reply_generation")
+            select(AiWorkflow).where(AiWorkflow.workflow_code == "group_knowledge_reply")
         )
-        workflow_record.dify_webhook_url = "https://dify.local/hook/reply"
+        workflow_record.dify_webhook_url = "https://dify.local/hook/group"
         session.commit()
 
     client = TestClient(app)
@@ -412,19 +405,12 @@ def test_existing_workflow_saves_ai_run_success_when_webhook_returns_outputs(tmp
 
     assert evaluate_response.status_code == 200
     with app.state.SessionLocal() as session:
-        run = session.scalar(select(AiRun).where(AiRun.workflow_code == "reply_generation"))
+        run = session.scalar(select(AiRun).where(AiRun.workflow_code == "group_knowledge_reply"))
 
         assert run.status == "success"
         assert run.output_json == {
             "action": "reply",
-            "reply": {
-                "reply_type": "markdown",
-                "content": "你好",
-            },
-            "metadata": {
-                "reply_scene": "mention",
-                "intent_type": "summary_request",
-                "evidence_msgids": ["MSG_STAGE9_WEBHOOK"],
-            },
+            "content": "你好",
+            "reason": "测试输出",
             "confidence": 0.9,
         }

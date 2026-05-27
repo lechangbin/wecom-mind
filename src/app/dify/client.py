@@ -27,6 +27,10 @@ class MockDifyClient:
         workflow: AiWorkflow,
         input_json: dict[str, Any],
     ) -> dict[str, Any]:
+        if workflow.workflow_code == "group_knowledge_reply":
+            return self._run_group_knowledge_reply(input_json)
+        if workflow.workflow_code == "chat_proactive_reminder":
+            return self._run_chat_proactive_reminder(input_json)
         if workflow.workflow_code == "user_profile_analysis":
             return self._run_user_profile_analysis(input_json)
         if workflow.workflow_code == "conversation_segmentation":
@@ -34,6 +38,53 @@ class MockDifyClient:
         if workflow.workflow_code == "intent_detection":
             return self._run_intent_detection(input_json)
         return self._run_reply_generation(input_json)
+
+    def _run_group_knowledge_reply(self, input_json: dict[str, Any]) -> dict[str, Any]:
+        payload = input_json.get("payload") if isinstance(input_json, dict) else {}
+        payload = payload if isinstance(payload, dict) else {}
+        question = payload.get("question") or ""
+        if not str(question).strip():
+            return {
+                "action": "out_of_scope",
+                "content": "",
+                "reason": "输入中没有可用于答疑的问题文本",
+                "confidence": 0.0,
+            }
+        return {
+            "action": "reply",
+            "content": f"收到：{question}",
+            "reason": "mock group knowledge reply",
+            "confidence": 0.9,
+        }
+
+    def _run_chat_proactive_reminder(self, input_json: dict[str, Any]) -> dict[str, Any]:
+        payload = input_json.get("payload") if isinstance(input_json, dict) else {}
+        payload = payload if isinstance(payload, dict) else {}
+        messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+        members = payload.get("members") if isinstance(payload.get("members"), list) else []
+        target_userid = ""
+        for member in members:
+            if isinstance(member, dict) and member.get("userid"):
+                target_userid = str(member["userid"])
+                break
+        quote_msgid = ""
+        if messages and isinstance(messages[0], dict):
+            quote_msgid = str(messages[0].get("msgid") or "")
+        if not target_userid or not quote_msgid:
+            return {
+                "should_send": False,
+                "target_userids": [],
+                "quote_msgid": "",
+                "content": "",
+                "confidence": 0.0,
+            }
+        return {
+            "should_send": True,
+            "target_userids": [target_userid],
+            "quote_msgid": quote_msgid,
+            "content": "猜你可能想了解这条知识：这是 mock 主动答疑。",
+            "confidence": 0.86,
+        }
 
     def _run_reply_generation(self, input_json: dict[str, Any]) -> dict[str, Any]:
         content = input_json.get("user_message") or ""
@@ -139,13 +190,24 @@ class DifyHttpClient:
         *,
         http_client: httpx.Client | None = None,
     ) -> None:
-        if not settings.dify_base_url or not settings.dify_api_key:
+        has_any_api_key = any(
+            (
+                settings.dify_api_key,
+                settings.dify_group_knowledge_reply_api_key,
+                settings.dify_chat_proactive_reminder_api_key,
+            )
+        )
+        if not settings.dify_base_url or not has_any_api_key:
             raise DifyClientError(
-                "DIFY_BASE_URL and DIFY_API_KEY are required when DIFY_CLIENT_MODE=real"
+                "DIFY_BASE_URL and at least one Dify API key are required when DIFY_CLIENT_MODE=real"
             )
 
         self.base_url = _normalize_dify_base_url(settings.dify_base_url)
-        self.api_key = settings.dify_api_key
+        self.api_key = settings.dify_api_key or ""
+        self.workflow_api_keys = {
+            "group_knowledge_reply": settings.dify_group_knowledge_reply_api_key,
+            "chat_proactive_reminder": settings.dify_chat_proactive_reminder_api_key,
+        }
         self.user = settings.dify_user
         self.max_retries = max(settings.dify_max_retries, 0)
         self._owns_client = http_client is None
@@ -165,7 +227,7 @@ class DifyHttpClient:
             "user": self.user,
         }
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self._api_key_for_workflow(workflow)}",
             "Content-Type": "application/json",
         }
         response = self._post(endpoint, json_payload=payload, headers=headers)
@@ -180,6 +242,14 @@ class DifyHttpClient:
             workflow_id = quote(workflow.dify_workflow_id, safe="")
             return f"{self.base_url}/workflows/{workflow_id}/run"
         return f"{self.base_url}/workflows/run"
+
+    def _api_key_for_workflow(self, workflow: AiWorkflow) -> str:
+        api_key = self.workflow_api_keys.get(workflow.workflow_code) or self.api_key
+        if not api_key:
+            raise DifyClientError(
+                f"Dify API key missing for workflow_code={workflow.workflow_code}"
+            )
+        return api_key
 
     def _post(
         self,

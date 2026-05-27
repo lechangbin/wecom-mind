@@ -72,11 +72,10 @@ def seed_dashboard_data(client: TestClient):
     trigger_response = client.post("/api/triggers/evaluate", json={"message_id": message_id})
     assert trigger_response.status_code == 200
 
-    scheduled_response = client.post(
-        "/api/scheduled-intents/run",
+    proactive_response = client.post(
+        "/api/proactive-replies/run",
         json={
             "chatid": "CHAT_A",
-            "job_id": "job_stage8",
             "time_range": {
                 "start": "2026-05-04T00:00:00+08:00",
                 "end": "2026-05-04T02:00:00+08:00",
@@ -84,7 +83,7 @@ def seed_dashboard_data(client: TestClient):
             "auto_enqueue": True,
         },
     )
-    assert scheduled_response.status_code == 200
+    assert proactive_response.status_code == 200
 
 
 def test_dashboard_overview_returns_core_counts(tmp_path):
@@ -105,7 +104,7 @@ def test_dashboard_overview_returns_core_counts(tmp_path):
     assert data["ai_success_rate"] == 1.0
     assert data["pending_outbox_count"] == 2
     assert data["failed_outbox_count"] == 0
-    assert data["scheduled_intent_count"] == 1
+    assert data["scheduled_intent_count"] == 0
 
 
 def test_chats_support_pagination_and_return_message_count(tmp_path):
@@ -140,18 +139,6 @@ def test_chat_messages_returns_messages_for_chat(tmp_path):
 def test_users_returns_user_list_with_message_count_and_profile_summary(tmp_path):
     client, _app = make_client(tmp_path)
     seed_dashboard_data(client)
-    profile_response = client.post(
-        "/api/profiles/analyze/run",
-        json={
-            "userid": "USER_A",
-            "mode": "incremental",
-            "time_range": {
-                "start": "2026-05-04T00:00:00+08:00",
-                "end": "2026-05-04T02:00:00+08:00",
-            },
-        },
-    )
-    assert profile_response.status_code == 200
 
     response = client.get("/api/users", params={"limit": 20, "offset": 0})
 
@@ -160,7 +147,7 @@ def test_users_returns_user_list_with_message_count_and_profile_summary(tmp_path
     assert data["total"] == 2
     users = {item["userid"]: item for item in data["items"]}
     assert users["USER_A"]["message_count"] == 1
-    assert users["USER_A"]["latest_profile_summary"] == "该用户近期主要关注报价、客户跟进和交付排期。"
+    assert users["USER_A"]["latest_profile_summary"] is None
     assert users["USER_B"]["message_count"] == 1
     assert users["USER_B"]["latest_profile_summary"] is None
 
@@ -195,7 +182,7 @@ def test_workflow_stats_returns_aggregates(tmp_path):
     with app.state.SessionLocal() as session:
         failed = AiRun(
             run_id="airun_failed_stage8",
-            workflow_code="reply_generation",
+            workflow_code="group_knowledge_reply",
             workflow_version="v1",
             input_json={},
             response_mode="blocking",
@@ -216,13 +203,13 @@ def test_workflow_stats_returns_aggregates(tmp_path):
 
     assert response.status_code == 200
     items = {item["workflow_code"]: item for item in response.json()["data"]["items"]}
-    assert items["reply_generation"]["total"] == 2
-    assert items["reply_generation"]["success"] == 1
-    assert items["reply_generation"]["failed"] == 1
-    assert items["reply_generation"]["invalid_output"] == 0
-    assert items["reply_generation"]["success_rate"] == 0.5
-    assert items["reply_generation"]["avg_latency_ms"] is not None
-    assert items["intent_detection"]["total"] == 1
+    assert items["group_knowledge_reply"]["total"] == 2
+    assert items["group_knowledge_reply"]["success"] == 1
+    assert items["group_knowledge_reply"]["failed"] == 1
+    assert items["group_knowledge_reply"]["invalid_output"] == 0
+    assert items["group_knowledge_reply"]["success_rate"] == 0.5
+    assert items["group_knowledge_reply"]["avg_latency_ms"] is not None
+    assert items["chat_proactive_reminder"]["total"] == 1
 
 
 def test_ai_runs_support_workflow_code_status_filtering(tmp_path):
@@ -232,7 +219,7 @@ def test_ai_runs_support_workflow_code_status_filtering(tmp_path):
     response = client.get(
         "/api/ai-runs",
         params={
-            "workflow_code": "intent_detection",
+            "workflow_code": "chat_proactive_reminder",
             "status": "success",
             "limit": 20,
             "offset": 0,
@@ -242,7 +229,7 @@ def test_ai_runs_support_workflow_code_status_filtering(tmp_path):
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["total"] == 1
-    assert data["items"][0]["workflow_code"] == "intent_detection"
+    assert data["items"][0]["workflow_code"] == "chat_proactive_reminder"
     assert data["items"][0]["status"] == "success"
 
 

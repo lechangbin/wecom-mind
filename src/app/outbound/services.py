@@ -51,17 +51,15 @@ def create_reply_outbox_for_ai_run(
 ) -> dict[str, Any] | None:
     if (
         ai_run.status != "success"
-        or ai_run.workflow_code != "reply_generation"
         or not isinstance(ai_run.output_json, dict)
-        or ai_run.output_json.get("action") != "reply"
     ):
         return None
 
-    reply = ai_run.output_json.get("reply")
-    if not isinstance(reply, dict):
+    reply = _reply_payload(ai_run)
+    if reply is None:
         return None
 
-    content = str(reply.get("content") or "")
+    content = reply["content"]
     if not content.strip():
         return None
 
@@ -124,6 +122,28 @@ def _reply_source(
     session: Session,
     input_json: dict[str, Any],
 ) -> tuple[int, str, str | None]:
+    payload = input_json.get("payload")
+    if isinstance(payload, dict):
+        message_payload = payload.get("message")
+        if isinstance(message_payload, dict):
+            message_id = message_payload.get("message_id")
+            if message_id is not None:
+                message = session.get(Message, int(message_id))
+                if message:
+                    return message.id, message.chatid, message.userid
+
+            msgid = message_payload.get("msgid")
+            chatid = message_payload.get("chatid") or payload.get("chatid")
+            if msgid and chatid:
+                message = session.scalar(
+                    select(Message).where(
+                        Message.external_msgid == str(msgid),
+                        Message.chatid == str(chatid),
+                    )
+                )
+                if message:
+                    return message.id, message.chatid, message.userid
+
     legacy_message = input_json.get("message")
     if isinstance(legacy_message, dict):
         return (
@@ -152,6 +172,28 @@ def _reply_source(
             f"Source message not found for source_msgid={source_msgid}",
         )
     return message.id, message.chatid, message.userid
+
+
+def _reply_payload(ai_run: AiRun) -> dict[str, str] | None:
+    output_json = ai_run.output_json if isinstance(ai_run.output_json, dict) else {}
+    if ai_run.workflow_code == "group_knowledge_reply":
+        if output_json.get("action") != "reply":
+            return None
+        content = str(output_json.get("content") or "")
+        return {"reply_type": "markdown", "content": content}
+
+    if ai_run.workflow_code == "reply_generation":
+        if output_json.get("action") != "reply":
+            return None
+        reply = output_json.get("reply")
+        if not isinstance(reply, dict):
+            return None
+        return {
+            "reply_type": str(reply.get("reply_type") or "text"),
+            "content": str(reply.get("content") or ""),
+        }
+
+    return None
 
 
 def send_outbox_message(

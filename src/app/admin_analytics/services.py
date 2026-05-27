@@ -349,7 +349,11 @@ def _ai_run_business_time(
             return _trigger_event_business_time(trigger_event, message_by_id)
 
     input_json = run.input_json if isinstance(run.input_json, dict) else {}
+    payload = input_json.get("payload") if isinstance(input_json.get("payload"), dict) else {}
+    payload_messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
     for value in (
+        ((payload.get("message") or {}) if isinstance(payload.get("message"), dict) else {}).get("create_time"),
+        payload_messages[0].get("create_time") if payload_messages and isinstance(payload_messages[0], dict) else None,
         (input_json.get("message") or {}).get("create_time"),
         input_json.get("start_time"),
         (input_json.get("scope") or {}).get("start_time"),

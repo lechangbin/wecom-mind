@@ -29,11 +29,12 @@ def run_dify_workflow_for_trigger(
     if existing:
         return existing
 
-    input_json = build_reply_generation_input(
+    input_json = build_trigger_workflow_input(
         trigger_event=trigger_event,
         message=message,
-        response_mode=workflow.response_mode,
+        workflow=workflow,
     )
+    validate_json_schema(input_json, workflow.input_schema)
     run = AiRun(
         run_id=_new_run_id(),
         workflow_code=workflow.workflow_code,
@@ -86,7 +87,65 @@ def get_enabled_workflow(
     return workflow
 
 
-def build_reply_generation_input(
+def build_trigger_workflow_input(
+    *,
+    trigger_event: TriggerEvent,
+    message: Message,
+    workflow: AiWorkflow,
+) -> dict[str, Any]:
+    if workflow.workflow_code == "group_knowledge_reply":
+        return build_group_knowledge_reply_input(
+            trigger_event=trigger_event,
+            message=message,
+        )
+
+    return build_legacy_reply_generation_input(
+        trigger_event=trigger_event,
+        message=message,
+        response_mode=workflow.response_mode,
+    )
+
+
+def build_group_knowledge_reply_input(
+    *,
+    trigger_event: TriggerEvent,
+    message: Message,
+) -> dict[str, Any]:
+    payload = {
+        "question": message.content_text or "",
+        "message": {
+            "message_id": str(message.id),
+            "msgid": message.external_msgid,
+            "chatid": message.chatid,
+            "userid": message.userid,
+            "content": message.content_text,
+            "create_time": message.create_time.isoformat(),
+        },
+        "group": {
+            "chatid": message.chatid,
+            "chattype": message.chattype,
+        },
+        "recent_messages": [
+            {
+                "message_id": str(message.id),
+                "msgid": message.external_msgid,
+                "chatid": message.chatid,
+                "userid": message.userid,
+                "content": message.content_text,
+                "create_time": message.create_time.isoformat(),
+            }
+        ],
+        "user_profile": None,
+        "image_summaries": [],
+        "runtime": {
+            "trigger_type": trigger_event.trigger_type,
+            "workflow_code": "group_knowledge_reply",
+        },
+    }
+    return {"payload": payload}
+
+
+def build_legacy_reply_generation_input(
     *,
     trigger_event: TriggerEvent,
     message: Message,

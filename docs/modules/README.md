@@ -19,11 +19,10 @@
 2. [企微接入模块](./01-wecom-adapter.md)
 3. [消息处理模块](./02-message-ingestion.md)
 4. [触发路由模块](./03-trigger-router.md)
-5. [Dify 调用模块](./04-dify-gateway.md)
-6. [发送模块](./05-outbound-dispatcher.md)
-7. [会话智能模块](./06-conversation-intelligence.md)
-8. [用户画像模块](./07-user-profile.md)
-9. [管理与统计模块](./08-admin-analytics.md)
+5. [发送模块](./05-outbound-dispatcher.md)
+6. [会话智能模块](./06-conversation-intelligence.md)
+7. [用户画像模块](./07-user-profile.md)
+8. [管理与统计模块](./08-admin-analytics.md)
 
 这个顺序不是物理目录要求，但建议后续代码结构也尽量对齐。
 
@@ -71,7 +70,7 @@ src/
 
 - 外部回调先落库，再异步处理。
 - 核心写入必须幂等。
-- Dify 输出必须校验后再写库。
+- 外部 AI 输出必须校验后再写库。
 - 发送消息必须先写 outbox。
 - 每个模块都要有明确输入、输出和状态字段。
 - MVP 阶段先闭环，再优化性能和前端体验。
@@ -82,5 +81,3 @@ src/
 
 - 架构总览：[../architecture/README.md](../architecture/README.md)
 - 数据模型：[../architecture/data-model.md](../architecture/data-model.md)
-- 接口契约：[../architecture/api-contracts.md](../architecture/api-contracts.md)
-- Dify 功能开发指引：[../dify-development/README.md](../dify-development/README.md)

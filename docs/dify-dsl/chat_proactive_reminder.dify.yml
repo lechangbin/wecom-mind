@@ -1,0 +1,1322 @@
+version: 0.6.0
+kind: app
+app:
+  name: chat_proactive_reminder
+  mode: workflow
+  icon: 🔔
+  icon_background: '#E3F2FD'
+  icon_type: emoji
+  description: 意图触发的知识答疑主动回复：基于自建系统识别出的聊天意图、上下文和 Dify 知识库检索结果，生成更像“猜你想知道”的主动回复。
+  use_icon_as_answer_icon: false
+dependencies: []
+workflow:
+  environment_variables: []
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - id: 1764051001001-source-1764051002001-target
+      source: '1764051001001'
+      sourceHandle: source
+      target: '1764051002001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051002001-source-1764051002501-target
+      source: '1764051002001'
+      sourceHandle: source
+      target: '1764051002501'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: knowledge-retrieval
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051002501-source-1764051003001-target
+      source: '1764051002501'
+      sourceHandle: source
+      target: '1764051003001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: knowledge-retrieval
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051003001-source-1764051004001-target
+      source: '1764051003001'
+      sourceHandle: source
+      target: '1764051004001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004001-source-1764051004101-target
+      source: '1764051004001'
+      sourceHandle: source
+      target: '1764051004101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004101-true-1764051005101-target
+      source: '1764051004101'
+      sourceHandle: 'true'
+      target: '1764051005101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004101-false-1764051004201-target
+      source: '1764051004101'
+      sourceHandle: 'false'
+      target: '1764051004201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004201-source-1764051004301-target
+      source: '1764051004201'
+      sourceHandle: source
+      target: '1764051004301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004301-source-1764051004401-target
+      source: '1764051004301'
+      sourceHandle: source
+      target: '1764051004401'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004401-true-1764051005201-target
+      source: '1764051004401'
+      sourceHandle: 'true'
+      target: '1764051005201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004401-false-1764051004501-target
+      source: '1764051004401'
+      sourceHandle: 'false'
+      target: '1764051004501'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004501-source-1764051004601-target
+      source: '1764051004501'
+      sourceHandle: source
+      target: '1764051004601'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764051004601-source-1764051005301-target
+      source: '1764051004601'
+      sourceHandle: source
+      target: '1764051005301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    nodes:
+    - id: '1764051001001'
+      type: custom
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: start
+        title: 开始：接收意图上下文
+        desc: 接收自建系统传入的意图触发消息、聊天窗口、成员、已处理记录和候选上下文；本节点只声明 payload，不直接生成回复。
+        variables:
+        - variable: payload
+          label: 系统上下文 payload
+          type: json_object
+          required: true
+          hint: 由自建系统组装，包含触发消息、消息列表、成员列表、已处理记录和意图触发场景。
+    - id: '1764051002001'
+      type: custom
+      position:
+        x: 380
+        y: 282
+      positionAbsolute:
+        x: 380
+        y: 282
+      width: 244
+      height: 120
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：整理意图答疑上下文
+        desc: 从 payload 中整理触发问题、消息窗口、候选用户和可引用 msgid，输出知识库检索 query 与 LLM 上下文；不新增用户或消息。
+        code_language: python3
+        variables:
+        - variable: payload
+          value_selector:
+          - '1764051001001'
+          - payload
+          value_type: object
+        code: |
+          import json
+
+          def _as_dict(value):
+              if isinstance(value, dict):
+                  return value
+              if isinstance(value, str):
+                  try:
+                      parsed = json.loads(value)
+                      return parsed if isinstance(parsed, dict) else {}
+                  except Exception:
+                      return {}
+              return {}
+
+          def _safe_list(value):
+              return value if isinstance(value, list) else []
+
+          def _text(value):
+              return value.strip() if isinstance(value, str) and value.strip() else ""
+
+          def _collect_userid(item):
+              obj = _as_dict(item)
+              for key in ("userid", "user_id", "sender_userid", "from_userid", "member_userid"):
+                  value = _text(obj.get(key))
+                  if value:
+                      return value
+              return ""
+
+          def _collect_msgid(item):
+              obj = _as_dict(item)
+              for key in ("msgid", "msg_id", "message_id"):
+                  value = _text(obj.get(key))
+                  if value:
+                      return value
+              return ""
+
+          def main(payload: dict) -> dict:
+              data = _as_dict(payload)
+              trigger = _as_dict(data.get("message") or data.get("trigger_message") or data.get("trigger"))
+              messages = _safe_list(data.get("messages") or data.get("recent_messages") or data.get("chat_window"))
+              members = _safe_list(data.get("members") or data.get("group_members"))
+              handled_records = _safe_list(data.get("handled_records") or data.get("processed_records") or data.get("reminder_records"))
+              query = _text(
+                  data.get("question")
+                  or data.get("query")
+                  or data.get("intent_query")
+                  or data.get("content")
+                  or trigger.get("content")
+                  or trigger.get("text")
+              )
+
+              candidate_userids = set()
+              for source in (members, messages, _safe_list(data.get("target_userids"))):
+                  for item in source:
+                      value = _collect_userid(item) if isinstance(item, dict) else _text(item)
+                      if value:
+                          candidate_userids.add(value)
+
+              known_msgids = set()
+              for item in messages:
+                  value = _collect_msgid(item)
+                  if value:
+                      known_msgids.add(value)
+
+              context = {
+                  "chatid": _text(data.get("chatid") or data.get("groupid")),
+                  "scenario": _text(data.get("scenario") or data.get("scene")),
+                  "intent_type": _text(data.get("intent_type") or data.get("intent")),
+                  "question": query,
+                  "trigger_message": trigger,
+                  "messages": messages,
+                  "members": members,
+                  "handled_records": handled_records,
+                  "candidate_userids": sorted(candidate_userids),
+                  "known_msgids": sorted(known_msgids),
+                  "policy": {
+                      "do_not_repeat_handled_records": True,
+                      "target_userids_must_come_from_candidate_userids": True,
+                      "quote_msgid_must_come_from_known_msgids": True,
+                      "reply_style": "intent_triggered_guess_answer"
+                  }
+              }
+
+              return {
+                  "query": query,
+                  "context_json": json.dumps(context, ensure_ascii=False, separators=(",", ":")),
+                  "candidate_userids": sorted(candidate_userids),
+                  "known_msgids": sorted(known_msgids),
+              }
+        outputs:
+          query:
+            type: string
+            children: null
+          context_json:
+            type: string
+            children: null
+          candidate_userids:
+            type: array[string]
+            children: null
+          known_msgids:
+            type: array[string]
+            children: null
+    - id: '1764051002501'
+      type: custom
+      position:
+        x: 680
+        y: 282
+      positionAbsolute:
+        x: 680
+        y: 282
+      width: 244
+      height: 110
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: knowledge-retrieval
+        title: 知识库：检索意图相关资料
+        desc: 使用自建系统识别出的意图问题检索 Dify 内部知识库；导入后请在本节点选择真实知识库。
+        query_variable_selector:
+        - '1764051002001'
+        - query
+        dataset_ids: []
+        retrieval_mode: multiple
+        multiple_retrieval_config:
+          top_k: 5
+          score_threshold: null
+          reranking_enable: false
+        metadata_filtering_mode: disabled
+    - id: '1764051003001'
+      type: custom
+      position:
+        x: 980
+        y: 140
+      positionAbsolute:
+        x: 980
+        y: 140
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 1 次生成主动回复 JSON
+        desc: 第 1 次尝试生成意图主动回复 JSON；如果是重试，会读取上一轮错误原因和输出模板进行修正。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.2
+            max_tokens: 1200
+        prompt_template:
+        - role: system
+          text: |-
+            你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
+
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid，以及 Dify 知识库检索结果。
+
+            你的任务：
+            - 判断当前聊天意图是否适合主动给出知识答疑。
+            - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
+            - 回复语气不要像被 @ 后直接回答问题，而要像“我猜你可能想了解这个问题的答案，所以补充一下……”。
+            - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
+
+            硬性约束：
+            - 只能输出合法 JSON，不要在 JSON 外输出解释性自然语言。
+            - target_userids 只能来自输入的 candidate_userids。
+            - quote_msgid 只能来自输入的 known_msgids。
+            - 不要编造输入中不存在的 msgid。
+            - 不要编造输入中不存在的 userid。
+            - 不负责 @ 用户、引用消息、发送消息、写数据库、幂等或重试。
+            - 越界、证据不足或不需要提醒时，输出 should_send=false。
+            - 知识库没有足够依据时，输出 should_send=false，不要硬答。
+
+            输出结构只能是：
+            {
+              "should_send": true 或 false,
+              "target_userids": ["输入中存在的 userid"],
+              "quote_msgid": "输入中存在的 msgid；不发送时为空字符串",
+              "content": "Markdown 主动回复正文；不发送时为空字符串",
+              "confidence": 0 到 1 的数字
+            }
+
+            知识库检索结果：
+            {{#context#}}
+        - role: user
+          text: |-
+            意图触发上下文 JSON：
+            {{#1764051002001.context_json#}}
+        variables: []
+        context:
+          enabled: true
+          variable_selector:
+          - '1764051002501'
+          - result
+        vision:
+          enabled: false
+    - id: '1764051004001'
+      type: custom
+      position:
+        x: 1280
+        y: 140
+      positionAbsolute:
+        x: 1280
+        y: 140
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 1 次主动回复 JSON
+        desc: 解析第 1 次模型输出，校验 JSON schema、userid 和 msgid 白名单；失败时输出错误原因和重试模板。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764051003001'
+          - text
+          value_type: string
+        - variable: candidate_userids
+          value_selector:
+          - '1764051002001'
+          - candidate_userids
+          value_type: array[string]
+        - variable: known_msgids
+          value_selector:
+          - '1764051002001'
+          - known_msgids
+          value_type: array[string]
+        code: |-
+          import json
+          import re
+
+          RETRY_TEMPLATE = json.dumps({
+              "should_send": False,
+              "target_userids": [],
+              "quote_msgid": "",
+              "content": "",
+              "confidence": 0.0
+          }, ensure_ascii=False, indent=2)
+
+          def _raw_json(text):
+              if not isinstance(text, str):
+                  return None, "模型输出不是字符串"
+              raw = text.strip()
+              if raw.startswith("```"):
+                  raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                  raw = re.sub(r"\s*```$", "", raw)
+              try:
+                  value = json.loads(raw)
+                  return value, ""
+              except Exception as first_error:
+                  match = re.search(r"\{.*\}", raw, re.S)
+                  if not match:
+                      return None, f"未找到 JSON 对象：{first_error}"
+                  try:
+                      value = json.loads(match.group(0))
+                      return value, ""
+                  except Exception as second_error:
+                      return None, f"JSON 解析失败：{second_error}"
+
+          def _confidence(value):
+              if isinstance(value, bool):
+                  return None
+              try:
+                  number = float(value)
+              except Exception:
+                  return None
+              return max(0.0, min(1.0, number))
+
+          def _as_string_list(value):
+              if not isinstance(value, list):
+                  return None
+              result = []
+              for item in value:
+                  if not isinstance(item, str):
+                      return None
+                  text = item.strip()
+                  if text:
+                      result.append(text)
+              return result
+
+          def _invalid(reason):
+              return {
+                  "should_send": False,
+                  "target_userids": [],
+                  "quote_msgid": "",
+                  "content": "",
+                  "confidence": 0.0,
+                  "is_valid": False,
+                  "error_reason": reason,
+                  "retry_template": RETRY_TEMPLATE,
+              }
+
+          def main(llm_text: str, candidate_userids: list, known_msgids: list) -> dict:
+              allowed_users = set(_as_string_list(candidate_userids) or [])
+              allowed_msgids = set(_as_string_list(known_msgids) or [])
+
+              data, parse_error = _raw_json(llm_text)
+              if not isinstance(data, dict):
+                  return _invalid(parse_error or "模型输出不是 JSON 对象")
+
+              if not isinstance(data.get("should_send"), bool):
+                  return _invalid("should_send 必须是布尔值 true 或 false")
+              target_userids = _as_string_list(data.get("target_userids"))
+              if target_userids is None:
+                  return _invalid("target_userids 必须是字符串数组")
+              quote_msgid = data.get("quote_msgid")
+              if not isinstance(quote_msgid, str):
+                  return _invalid("quote_msgid 必须是字符串")
+              content = data.get("content")
+              if not isinstance(content, str):
+                  return _invalid("content 必须是字符串")
+              confidence = _confidence(data.get("confidence"))
+              if confidence is None:
+                  return _invalid("confidence 必须是 0 到 1 的数字")
+
+              should_send = data["should_send"]
+              quote_msgid = quote_msgid.strip()
+              content = content.strip()
+
+              if not should_send:
+                  if target_userids or quote_msgid or content:
+                      return _invalid("should_send=false 时 target_userids、quote_msgid、content 必须为空")
+                  return {
+                      "should_send": False,
+                      "target_userids": [],
+                      "quote_msgid": "",
+                      "content": "",
+                      "confidence": confidence,
+                      "is_valid": True,
+                      "error_reason": "",
+                      "retry_template": RETRY_TEMPLATE,
+                  }
+
+              illegal_users = [userid for userid in target_userids if userid not in allowed_users]
+              if illegal_users:
+                  return _invalid("target_userids 包含输入中不存在的 userid: " + ",".join(illegal_users))
+              if not target_userids:
+                  return _invalid("should_send=true 时 target_userids 不能为空")
+              if quote_msgid not in allowed_msgids:
+                  return _invalid("quote_msgid 必须来自输入中的 known_msgids")
+              if not content:
+                  return _invalid("should_send=true 时 content 不能为空")
+              if confidence < 0.6:
+                  return _invalid("should_send=true 时 confidence 必须大于等于 0.6；否则请输出 should_send=false")
+
+              return {
+                  "should_send": True,
+                  "target_userids": target_userids,
+                  "quote_msgid": quote_msgid,
+                  "content": content,
+                  "confidence": confidence,
+                  "is_valid": True,
+                  "error_reason": "",
+                  "retry_template": RETRY_TEMPLATE,
+              }
+        outputs:
+          should_send:
+            type: boolean
+            children: null
+          target_userids:
+            type: array[string]
+            children: null
+          quote_msgid:
+            type: string
+            children: null
+          content:
+            type: string
+            children: null
+          confidence:
+            type: number
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+    - id: '1764051004101'
+      type: custom
+      position:
+        x: 1580
+        y: 140
+      positionAbsolute:
+        x: 1580
+        y: 140
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 1 次主动回复 JSON 是否有效
+        desc: 如果第 1 次校验通过则直接结束；否则进入第 2 次生成，并把错误原因与模板传给模型。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: chat-cond-valid-1
+            varType: boolean
+            variable_selector:
+            - '1764051004001'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764051005101'
+      type: custom
+      position:
+        x: 1880
+        y: 20
+      positionAbsolute:
+        x: 1880
+        y: 20
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 1 次主动回复结果
+        desc: 第 1 次校验通过或最终兜底后输出正式主动回复字段；自建系统继续负责 @、引用、发送、幂等、失败重试和审计。
+        outputs:
+        - variable: should_send
+          value_selector:
+          - '1764051004001'
+          - should_send
+          value_type: boolean
+        - variable: target_userids
+          value_selector:
+          - '1764051004001'
+          - target_userids
+          value_type: array[string]
+        - variable: quote_msgid
+          value_selector:
+          - '1764051004001'
+          - quote_msgid
+          value_type: string
+        - variable: content
+          value_selector:
+          - '1764051004001'
+          - content
+          value_type: string
+        - variable: confidence
+          value_selector:
+          - '1764051004001'
+          - confidence
+          value_type: number
+    - id: '1764051004201'
+      type: custom
+      position:
+        x: 1880
+        y: 280
+      positionAbsolute:
+        x: 1880
+        y: 280
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 2 次生成主动回复 JSON
+        desc: 第 2 次尝试生成意图主动回复 JSON；如果是重试，会读取上一轮错误原因和输出模板进行修正。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.2
+            max_tokens: 1200
+        prompt_template:
+        - role: system
+          text: |-
+            你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
+
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid，以及 Dify 知识库检索结果。
+
+            你的任务：
+            - 判断当前聊天意图是否适合主动给出知识答疑。
+            - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
+            - 回复语气不要像被 @ 后直接回答问题，而要像“我猜你可能想了解这个问题的答案，所以补充一下……”。
+            - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
+
+            硬性约束：
+            - 只能输出合法 JSON，不要在 JSON 外输出解释性自然语言。
+            - target_userids 只能来自输入的 candidate_userids。
+            - quote_msgid 只能来自输入的 known_msgids。
+            - 不要编造输入中不存在的 msgid。
+            - 不要编造输入中不存在的 userid。
+            - 不负责 @ 用户、引用消息、发送消息、写数据库、幂等或重试。
+            - 越界、证据不足或不需要提醒时，输出 should_send=false。
+            - 知识库没有足够依据时，输出 should_send=false，不要硬答。
+
+            输出结构只能是：
+            {
+              "should_send": true 或 false,
+              "target_userids": ["输入中存在的 userid"],
+              "quote_msgid": "输入中存在的 msgid；不发送时为空字符串",
+              "content": "Markdown 主动回复正文；不发送时为空字符串",
+              "confidence": 0 到 1 的数字
+            }
+
+            知识库检索结果：
+            {{#context#}}
+        - role: user
+          text: |-
+            意图触发上下文 JSON：
+            {{#1764051002001.context_json#}}
+
+            上一次输出校验失败原因：
+            {{#1764051004001.error_reason#}}
+
+            请严格按照下面模板重新输出：
+            {{#1764051004001.retry_template#}}
+        variables: []
+        context:
+          enabled: true
+          variable_selector:
+          - '1764051002501'
+          - result
+        vision:
+          enabled: false
+    - id: '1764051004301'
+      type: custom
+      position:
+        x: 2180
+        y: 280
+      positionAbsolute:
+        x: 2180
+        y: 280
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 2 次主动回复 JSON
+        desc: 解析第 2 次模型输出，校验 JSON schema、userid 和 msgid 白名单；失败时输出错误原因和重试模板。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764051004201'
+          - text
+          value_type: string
+        - variable: candidate_userids
+          value_selector:
+          - '1764051002001'
+          - candidate_userids
+          value_type: array[string]
+        - variable: known_msgids
+          value_selector:
+          - '1764051002001'
+          - known_msgids
+          value_type: array[string]
+        code: |-
+          import json
+          import re
+
+          RETRY_TEMPLATE = json.dumps({
+              "should_send": False,
+              "target_userids": [],
+              "quote_msgid": "",
+              "content": "",
+              "confidence": 0.0
+          }, ensure_ascii=False, indent=2)
+
+          def _raw_json(text):
+              if not isinstance(text, str):
+                  return None, "模型输出不是字符串"
+              raw = text.strip()
+              if raw.startswith("```"):
+                  raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                  raw = re.sub(r"\s*```$", "", raw)
+              try:
+                  value = json.loads(raw)
+                  return value, ""
+              except Exception as first_error:
+                  match = re.search(r"\{.*\}", raw, re.S)
+                  if not match:
+                      return None, f"未找到 JSON 对象：{first_error}"
+                  try:
+                      value = json.loads(match.group(0))
+                      return value, ""
+                  except Exception as second_error:
+                      return None, f"JSON 解析失败：{second_error}"
+
+          def _confidence(value):
+              if isinstance(value, bool):
+                  return None
+              try:
+                  number = float(value)
+              except Exception:
+                  return None
+              return max(0.0, min(1.0, number))
+
+          def _as_string_list(value):
+              if not isinstance(value, list):
+                  return None
+              result = []
+              for item in value:
+                  if not isinstance(item, str):
+                      return None
+                  text = item.strip()
+                  if text:
+                      result.append(text)
+              return result
+
+          def _invalid(reason):
+              return {
+                  "should_send": False,
+                  "target_userids": [],
+                  "quote_msgid": "",
+                  "content": "",
+                  "confidence": 0.0,
+                  "is_valid": False,
+                  "error_reason": reason,
+                  "retry_template": RETRY_TEMPLATE,
+              }
+
+          def main(llm_text: str, candidate_userids: list, known_msgids: list) -> dict:
+              allowed_users = set(_as_string_list(candidate_userids) or [])
+              allowed_msgids = set(_as_string_list(known_msgids) or [])
+
+              data, parse_error = _raw_json(llm_text)
+              if not isinstance(data, dict):
+                  return _invalid(parse_error or "模型输出不是 JSON 对象")
+
+              if not isinstance(data.get("should_send"), bool):
+                  return _invalid("should_send 必须是布尔值 true 或 false")
+              target_userids = _as_string_list(data.get("target_userids"))
+              if target_userids is None:
+                  return _invalid("target_userids 必须是字符串数组")
+              quote_msgid = data.get("quote_msgid")
+              if not isinstance(quote_msgid, str):
+                  return _invalid("quote_msgid 必须是字符串")
+              content = data.get("content")
+              if not isinstance(content, str):
+                  return _invalid("content 必须是字符串")
+              confidence = _confidence(data.get("confidence"))
+              if confidence is None:
+                  return _invalid("confidence 必须是 0 到 1 的数字")
+
+              should_send = data["should_send"]
+              quote_msgid = quote_msgid.strip()
+              content = content.strip()
+
+              if not should_send:
+                  if target_userids or quote_msgid or content:
+                      return _invalid("should_send=false 时 target_userids、quote_msgid、content 必须为空")
+                  return {
+                      "should_send": False,
+                      "target_userids": [],
+                      "quote_msgid": "",
+                      "content": "",
+                      "confidence": confidence,
+                      "is_valid": True,
+                      "error_reason": "",
+                      "retry_template": RETRY_TEMPLATE,
+                  }
+
+              illegal_users = [userid for userid in target_userids if userid not in allowed_users]
+              if illegal_users:
+                  return _invalid("target_userids 包含输入中不存在的 userid: " + ",".join(illegal_users))
+              if not target_userids:
+                  return _invalid("should_send=true 时 target_userids 不能为空")
+              if quote_msgid not in allowed_msgids:
+                  return _invalid("quote_msgid 必须来自输入中的 known_msgids")
+              if not content:
+                  return _invalid("should_send=true 时 content 不能为空")
+              if confidence < 0.6:
+                  return _invalid("should_send=true 时 confidence 必须大于等于 0.6；否则请输出 should_send=false")
+
+              return {
+                  "should_send": True,
+                  "target_userids": target_userids,
+                  "quote_msgid": quote_msgid,
+                  "content": content,
+                  "confidence": confidence,
+                  "is_valid": True,
+                  "error_reason": "",
+                  "retry_template": RETRY_TEMPLATE,
+              }
+        outputs:
+          should_send:
+            type: boolean
+            children: null
+          target_userids:
+            type: array[string]
+            children: null
+          quote_msgid:
+            type: string
+            children: null
+          content:
+            type: string
+            children: null
+          confidence:
+            type: number
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+    - id: '1764051004401'
+      type: custom
+      position:
+        x: 2480
+        y: 280
+      positionAbsolute:
+        x: 2480
+        y: 280
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 2 次主动回复 JSON 是否有效
+        desc: 如果第 2 次校验通过则直接结束；否则进入第 3 次生成，并继续传递最新错误原因与模板。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: chat-cond-valid-2
+            varType: boolean
+            variable_selector:
+            - '1764051004301'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764051005201'
+      type: custom
+      position:
+        x: 2780
+        y: 200
+      positionAbsolute:
+        x: 2780
+        y: 200
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 2 次主动回复结果
+        desc: 第 2 次校验通过或最终兜底后输出正式主动回复字段；自建系统继续负责 @、引用、发送、幂等、失败重试和审计。
+        outputs:
+        - variable: should_send
+          value_selector:
+          - '1764051004301'
+          - should_send
+          value_type: boolean
+        - variable: target_userids
+          value_selector:
+          - '1764051004301'
+          - target_userids
+          value_type: array[string]
+        - variable: quote_msgid
+          value_selector:
+          - '1764051004301'
+          - quote_msgid
+          value_type: string
+        - variable: content
+          value_selector:
+          - '1764051004301'
+          - content
+          value_type: string
+        - variable: confidence
+          value_selector:
+          - '1764051004301'
+          - confidence
+          value_type: number
+    - id: '1764051004501'
+      type: custom
+      position:
+        x: 2780
+        y: 420
+      positionAbsolute:
+        x: 2780
+        y: 420
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 3 次生成主动回复 JSON
+        desc: 第 3 次尝试生成意图主动回复 JSON；如果是重试，会读取上一轮错误原因和输出模板进行修正。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.2
+            max_tokens: 1200
+        prompt_template:
+        - role: system
+          text: |-
+            你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
+
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid，以及 Dify 知识库检索结果。
+
+            你的任务：
+            - 判断当前聊天意图是否适合主动给出知识答疑。
+            - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
+            - 回复语气不要像被 @ 后直接回答问题，而要像“我猜你可能想了解这个问题的答案，所以补充一下……”。
+            - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
+
+            硬性约束：
+            - 只能输出合法 JSON，不要在 JSON 外输出解释性自然语言。
+            - target_userids 只能来自输入的 candidate_userids。
+            - quote_msgid 只能来自输入的 known_msgids。
+            - 不要编造输入中不存在的 msgid。
+            - 不要编造输入中不存在的 userid。
+            - 不负责 @ 用户、引用消息、发送消息、写数据库、幂等或重试。
+            - 越界、证据不足或不需要提醒时，输出 should_send=false。
+            - 知识库没有足够依据时，输出 should_send=false，不要硬答。
+
+            输出结构只能是：
+            {
+              "should_send": true 或 false,
+              "target_userids": ["输入中存在的 userid"],
+              "quote_msgid": "输入中存在的 msgid；不发送时为空字符串",
+              "content": "Markdown 主动回复正文；不发送时为空字符串",
+              "confidence": 0 到 1 的数字
+            }
+
+            知识库检索结果：
+            {{#context#}}
+        - role: user
+          text: |-
+            意图触发上下文 JSON：
+            {{#1764051002001.context_json#}}
+
+            上一次输出校验失败原因：
+            {{#1764051004301.error_reason#}}
+
+            请严格按照下面模板重新输出：
+            {{#1764051004301.retry_template#}}
+        variables: []
+        context:
+          enabled: true
+          variable_selector:
+          - '1764051002501'
+          - result
+        vision:
+          enabled: false
+    - id: '1764051004601'
+      type: custom
+      position:
+        x: 3080
+        y: 420
+      positionAbsolute:
+        x: 3080
+        y: 420
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 3 次主动回复 JSON
+        desc: 解析第 3 次模型输出，校验 JSON schema、userid 和 msgid 白名单；失败时输出错误原因和重试模板。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764051004501'
+          - text
+          value_type: string
+        - variable: candidate_userids
+          value_selector:
+          - '1764051002001'
+          - candidate_userids
+          value_type: array[string]
+        - variable: known_msgids
+          value_selector:
+          - '1764051002001'
+          - known_msgids
+          value_type: array[string]
+        code: |-
+          import json
+          import re
+
+          RETRY_TEMPLATE = json.dumps({
+              "should_send": False,
+              "target_userids": [],
+              "quote_msgid": "",
+              "content": "",
+              "confidence": 0.0
+          }, ensure_ascii=False, indent=2)
+
+          def _raw_json(text):
+              if not isinstance(text, str):
+                  return None, "模型输出不是字符串"
+              raw = text.strip()
+              if raw.startswith("```"):
+                  raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                  raw = re.sub(r"\s*```$", "", raw)
+              try:
+                  value = json.loads(raw)
+                  return value, ""
+              except Exception as first_error:
+                  match = re.search(r"\{.*\}", raw, re.S)
+                  if not match:
+                      return None, f"未找到 JSON 对象：{first_error}"
+                  try:
+                      value = json.loads(match.group(0))
+                      return value, ""
+                  except Exception as second_error:
+                      return None, f"JSON 解析失败：{second_error}"
+
+          def _confidence(value):
+              if isinstance(value, bool):
+                  return None
+              try:
+                  number = float(value)
+              except Exception:
+                  return None
+              return max(0.0, min(1.0, number))
+
+          def _as_string_list(value):
+              if not isinstance(value, list):
+                  return None
+              result = []
+              for item in value:
+                  if not isinstance(item, str):
+                      return None
+                  text = item.strip()
+                  if text:
+                      result.append(text)
+              return result
+
+          def _invalid(reason):
+              return {
+                  "should_send": False,
+                  "target_userids": [],
+                  "quote_msgid": "",
+                  "content": "",
+                  "confidence": 0.0,
+                  "is_valid": False,
+                  "error_reason": reason,
+                  "retry_template": RETRY_TEMPLATE,
+              }
+
+          def main(llm_text: str, candidate_userids: list, known_msgids: list) -> dict:
+              allowed_users = set(_as_string_list(candidate_userids) or [])
+              allowed_msgids = set(_as_string_list(known_msgids) or [])
+
+              data, parse_error = _raw_json(llm_text)
+              if not isinstance(data, dict):
+                  return _invalid(parse_error or "模型输出不是 JSON 对象")
+
+              if not isinstance(data.get("should_send"), bool):
+                  return _invalid("should_send 必须是布尔值 true 或 false")
+              target_userids = _as_string_list(data.get("target_userids"))
+              if target_userids is None:
+                  return _invalid("target_userids 必须是字符串数组")
+              quote_msgid = data.get("quote_msgid")
+              if not isinstance(quote_msgid, str):
+                  return _invalid("quote_msgid 必须是字符串")
+              content = data.get("content")
+              if not isinstance(content, str):
+                  return _invalid("content 必须是字符串")
+              confidence = _confidence(data.get("confidence"))
+              if confidence is None:
+                  return _invalid("confidence 必须是 0 到 1 的数字")
+
+              should_send = data["should_send"]
+              quote_msgid = quote_msgid.strip()
+              content = content.strip()
+
+              if not should_send:
+                  if target_userids or quote_msgid or content:
+                      return _invalid("should_send=false 时 target_userids、quote_msgid、content 必须为空")
+                  return {
+                      "should_send": False,
+                      "target_userids": [],
+                      "quote_msgid": "",
+                      "content": "",
+                      "confidence": confidence,
+                      "is_valid": True,
+                      "error_reason": "",
+                      "retry_template": RETRY_TEMPLATE,
+                  }
+
+              illegal_users = [userid for userid in target_userids if userid not in allowed_users]
+              if illegal_users:
+                  return _invalid("target_userids 包含输入中不存在的 userid: " + ",".join(illegal_users))
+              if not target_userids:
+                  return _invalid("should_send=true 时 target_userids 不能为空")
+              if quote_msgid not in allowed_msgids:
+                  return _invalid("quote_msgid 必须来自输入中的 known_msgids")
+              if not content:
+                  return _invalid("should_send=true 时 content 不能为空")
+              if confidence < 0.6:
+                  return _invalid("should_send=true 时 confidence 必须大于等于 0.6；否则请输出 should_send=false")
+
+              return {
+                  "should_send": True,
+                  "target_userids": target_userids,
+                  "quote_msgid": quote_msgid,
+                  "content": content,
+                  "confidence": confidence,
+                  "is_valid": True,
+                  "error_reason": "",
+                  "retry_template": RETRY_TEMPLATE,
+              }
+        outputs:
+          should_send:
+            type: boolean
+            children: null
+          target_userids:
+            type: array[string]
+            children: null
+          quote_msgid:
+            type: string
+            children: null
+          content:
+            type: string
+            children: null
+          confidence:
+            type: number
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+    - id: '1764051005301'
+      type: custom
+      position:
+        x: 3380
+        y: 420
+      positionAbsolute:
+        x: 3380
+        y: 420
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 3 次主动回复结果
+        desc: 第 3 次校验通过或最终兜底后输出正式主动回复字段；自建系统继续负责 @、引用、发送、幂等、失败重试和审计。
+        outputs:
+        - variable: should_send
+          value_selector:
+          - '1764051004601'
+          - should_send
+          value_type: boolean
+        - variable: target_userids
+          value_selector:
+          - '1764051004601'
+          - target_userids
+          value_type: array[string]
+        - variable: quote_msgid
+          value_selector:
+          - '1764051004601'
+          - quote_msgid
+          value_type: string
+        - variable: content
+          value_selector:
+          - '1764051004601'
+          - content
+          value_type: string
+        - variable: confidence
+          value_selector:
+          - '1764051004601'
+          - confidence
+          value_type: number
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

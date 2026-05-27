@@ -41,10 +41,11 @@ def outbox(
     msgtype="markdown",
     content=None,
     chatid="CHAT_A",
+    scene="manual",
 ) -> OutboxMessage:
     return OutboxMessage(
         outbox_id="out_test",
-        scene="proactive",
+        scene=scene,
         chatid=chatid,
         target_userids=target_userids or [],
         msgtype=msgtype,
@@ -60,7 +61,7 @@ def create_outbox(client: TestClient, *, msgtype="markdown", target_userids=None
     response = client.post(
         "/api/outbox-messages",
         json={
-            "scene": "proactive",
+            "scene": "manual",
             "chatid": "CHAT_A",
             "target_userids": target_userids or ["USER_A"],
             "msgtype": msgtype,
@@ -224,6 +225,38 @@ def test_app_sender_without_target_users_calls_appchat_send():
     assert seen["path"] == "/cgi-bin/appchat/send"
     assert seen["payload"]["chatid"] == "CHAT_A"
     assert seen["payload"]["msgtype"] == "markdown"
+
+
+def test_app_sender_proactive_scene_calls_appchat_even_with_target_users():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/gettoken"):
+            return httpx.Response(
+                200,
+                json={"errcode": 0, "errmsg": "ok", "access_token": "token_1", "expires_in": 7200},
+            )
+        seen["path"] = request.url.path
+        seen["payload"] = json.loads(request.content)
+        return httpx.Response(200, json={"errcode": 0, "errmsg": "ok", "msgid": "APPCHAT_SENT"})
+
+    api_client = WeComApiClient(app_settings(), http_client=make_http_client(handler))
+    sender = WeComAppMessageSender(settings=app_settings(), api_client=api_client)
+
+    result = sender.send(
+        outbox(
+            scene="proactive",
+            target_userids=["USER_A"],
+            msgtype="markdown",
+            content={"markdown": {"content": "<@USER_A> 猜你可能想了解这个答案。"}},
+        )
+    )
+
+    assert result["success"] is True
+    assert seen["path"] == "/cgi-bin/appchat/send"
+    assert seen["payload"]["chatid"] == "CHAT_A"
+    assert seen["payload"]["msgtype"] == "markdown"
+    assert seen["payload"]["markdown"]["content"] == "<@USER_A> 猜你可能想了解这个答案。"
 
 
 def test_webhook_sender_posts_directly_without_gettoken():

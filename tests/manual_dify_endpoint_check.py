@@ -29,13 +29,11 @@ def main() -> int:
     with httpx.Client(timeout=timeout) as client:
         for endpoint in config["endpoints"]:
             workflow_result = call_workflow_api(client, config, endpoint)
-            webhook_result = call_webhook(client, endpoint)
             results.append(
                 {
                     "workflow_code": endpoint["workflow_code"],
                     "name": endpoint["name"],
                     "workflow_api": workflow_result,
-                    "webhook": webhook_result,
                 }
             )
 
@@ -47,7 +45,6 @@ def main() -> int:
 
     for item in results:
         workflow_api = item["workflow_api"]
-        webhook = item["webhook"]
         print(f"[{item['workflow_code']}] {item['name']}")
         print(
             "  workflow_api:",
@@ -55,7 +52,6 @@ def main() -> int:
             workflow_api.get("dify_status"),
             summarize_outputs(workflow_api.get("outputs")),
         )
-        print("  webhook:", webhook["http_status"], webhook.get("body"))
     print(f"\nResults written to {result_path}")
     return 0
 
@@ -65,7 +61,11 @@ def call_workflow_api(
     config: dict[str, Any],
     endpoint: dict[str, Any],
 ) -> dict[str, Any]:
-    url = f"{config['base_url'].rstrip('/')}/v1/workflows/run"
+    workflow_id = endpoint.get("workflow_id")
+    if workflow_id:
+        url = f"{config['base_url'].rstrip('/')}/v1/workflows/{workflow_id}/run"
+    else:
+        url = f"{config['base_url'].rstrip('/')}/v1/workflows/run"
     body = {
         "inputs": {"payload": endpoint["inputs"]},
         "response_mode": "blocking",
@@ -85,22 +85,6 @@ def call_workflow_api(
             "dify_status": data.get("status") if isinstance(data, dict) else None,
             "outputs": data.get("outputs") if isinstance(data, dict) else None,
             "body": parsed,
-        }
-    except Exception as exc:
-        return {
-            "http_status": None,
-            "ok": False,
-            "error": str(exc),
-        }
-
-
-def call_webhook(client: httpx.Client, endpoint: dict[str, Any]) -> dict[str, Any]:
-    try:
-        response = client.post(endpoint["webhook_url"], json=endpoint["inputs"])
-        return {
-            "http_status": response.status_code,
-            "ok": 200 <= response.status_code < 300,
-            "body": parse_response_body(response),
         }
     except Exception as exc:
         return {

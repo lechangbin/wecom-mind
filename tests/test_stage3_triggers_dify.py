@@ -95,7 +95,7 @@ def test_mention_message_evaluate_creates_trigger_event(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["data"]["matched"] is True
-    assert response.json()["data"]["events"][0]["workflow_code"] == "reply_generation"
+    assert response.json()["data"]["events"][0]["workflow_code"] == "group_knowledge_reply"
 
     with app.state.SessionLocal() as session:
         event = session.scalar(select(TriggerEvent))
@@ -106,7 +106,7 @@ def test_mention_message_evaluate_creates_trigger_event(tmp_path):
         assert event.message_id == message_id
         assert event.chatid == message.chatid
         assert event.userid == message.userid
-        assert event.workflow_code == "reply_generation"
+        assert event.workflow_code == "group_knowledge_reply"
         assert event.status == "handled"
 
 
@@ -127,14 +127,13 @@ def test_mention_message_evaluate_creates_ai_run(tmp_path):
     with app.state.SessionLocal() as session:
         run = session.scalar(select(AiRun))
 
-        assert run.workflow_code == "reply_generation"
+        assert run.workflow_code == "group_knowledge_reply"
         assert run.workflow_version == "v1"
         assert run.trigger_event_id is not None
         assert run.response_mode == "blocking"
         assert run.status == "success"
-        assert run.input_json["reply_scene"] == "mention"
-        assert run.input_json["source_msgid"] == "MSG_MENTION_RUN"
-        assert run.input_json["user_message"] == "@机器人 写个回复"
+        assert run.input_json["payload"]["message"]["msgid"] == "MSG_MENTION_RUN"
+        assert run.input_json["payload"]["question"] == "@机器人 写个回复"
         assert run.output_json["action"] == "reply"
         assert run.latency_ms >= 0
         assert run.error_message is None
@@ -176,15 +175,8 @@ def test_mock_dify_valid_output_sets_ai_run_status_success(tmp_path):
         assert run.status == "success"
         assert run.output_json == {
             "action": "reply",
-            "reply": {
-                "reply_type": "markdown",
-                "content": "收到：@机器人 hello mock",
-            },
-            "metadata": {
-                "reply_scene": "mention",
-                "intent_type": "mock_reply",
-                "evidence_msgids": ["MSG_VALID_DIFY"],
-            },
+            "content": "收到：@机器人 hello mock",
+            "reason": "mock group knowledge reply",
             "confidence": 0.9,
         }
 
@@ -226,7 +218,7 @@ def test_get_ai_runs_lists_stage3_run_records(tmp_path):
     assert response.status_code == 200
     assert response.json()["data"]["total"] == 1
     item = response.json()["data"]["items"][0]
-    assert item["workflow_code"] == "reply_generation"
+    assert item["workflow_code"] == "group_knowledge_reply"
     assert item["status"] == "success"
 
     detail = client.get(f"/api/ai-runs/{item['run_id']}")

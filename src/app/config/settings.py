@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     dify_base_url: str | None = None
     dify_api_key: str | None = None
+    dify_group_knowledge_reply_api_key: str | None = None
+    dify_chat_proactive_reminder_api_key: str | None = None
     dify_client_mode: Literal["mock", "real", "webhook"] = "mock"
     dify_timeout_seconds: int = 30
     dify_max_retries: int = 1

@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>消息接收后的执行链路</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #5f6b7a;
+      --line: #cfd7e3;
+      --auto: #e8f5e9;
+      --auto-border: #65a86f;
+      --manual: #fff4e5;
+      --manual-border: #d48a2e;
+      --parallel: #e9f2ff;
+      --parallel-border: #5c8fd8;
+      --risk: #fdeeee;
+      --risk-border: #d45b5b;
+      --future: #f1edff;
+      --future-border: #8a73d6;
+      --code: #eef1f5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      background: #253041;
+      color: #fff;
+      padding: 34px 40px 30px;
+    }
+
+    header h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    header p {
+      max-width: 1100px;
+      margin: 0;
+      color: #d9e0ec;
+      font-size: 15px;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 26px 24px 42px;
+    }
+
+    section {
+      background: var(--panel);
+      border: 1px solid #e2e7ef;
+      border-radius: 8px;
+      padding: 22px;
+      margin-bottom: 22px;
+      box-shadow: 0 10px 24px rgba(31, 41, 55, 0.05);
+    }
+
+    h2 {
+      margin: 0 0 16px;
+      font-size: 20px;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    p {
+      margin: 0 0 12px;
+    }
+
+    code {
+      background: var(--code);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.92em;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fff;
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
+    .dot.auto { background: var(--auto-border); }
+    .dot.manual { background: var(--manual-border); }
+    .dot.parallel { background: var(--parallel-border); }
+    .dot.risk { background: var(--risk-border); }
+    .dot.future { background: var(--future-border); }
+
+    .answer-grid,
+    .candidate-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .fact {
+      border: 1px solid #e2e7ef;
+      border-left: 5px solid var(--manual-border);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 118px;
+      background: #fffdf9;
+    }
+
+    .fact strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(90px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .node {
+      position: relative;
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-width: 150px;
+      min-height: 128px;
+      background: #fff;
+    }
+
+    .node::after {
+      content: "";
+      position: absolute;
+      right: -17px;
+      top: 50%;
+      width: 20px;
+      border-top: 2px solid var(--line);
+      transform: translateY(-50%);
+    }
+
+    .node.last::after,
+    .lane-end::after {
+      display: none;
+    }
+
+    .node.auto {
+      background: var(--auto);
+      border-color: var(--auto-border);
+    }
+
+    .node.manual {
+      background: var(--manual);
+      border-color: var(--manual-border);
+    }
+
+    .node.parallel {
+      background: var(--parallel);
+      border-color: var(--parallel-border);
+    }
+
+    .node.risk {
+      background: var(--risk);
+      border-color: var(--risk-border);
+    }
+
+    .node.future {
+      background: var(--future);
+      border-color: var(--future-border);
+    }
+
+    .node .label {
+      display: inline-block;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .node p,
+    .candidate p,
+    .fact p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .node small {
+      display: block;
+      margin-top: 8px;
+      color: #4b5563;
+      font-size: 12px;
+    }
+
+    .swimlane {
+      display: grid;
+      grid-template-columns: 160px 1fr;
+      border: 1px solid #e2e7ef;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      background: #fff;
+    }
+
+    .lane-title {
+      background: #eef1f5;
+      padding: 16px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+    }
+
+    .lane-body {
+      padding: 14px;
+      overflow-x: auto;
+    }
+
+    .lane-flow {
+      display: flex;
+      gap: 12px;
+      min-width: 820px;
+    }
+
+    .lane-flow .node {
+      flex: 1 1 160px;
+    }
+
+    .branch-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .branch {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fbfcfe;
+    }
+
+    .branch-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .branch .flow {
+      grid-template-columns: repeat(5, minmax(130px, 1fr));
+    }
+
+    .candidate {
+      border: 1px solid #e2e7ef;
+      border-left: 5px solid var(--future-border);
+      border-radius: 8px;
+      padding: 14px;
+      background: #fff;
+    }
+
+    .candidate .priority {
+      display: inline-block;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: 700;
+      background: var(--future);
+      color: #4f3da0;
+    }
+
+    .source-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .source-list li {
+      margin: 6px 0;
+    }
+
+    @media (max-width: 920px) {
+      header {
+        padding: 26px 22px;
+      }
+
+      main {
+        padding: 18px 14px 32px;
+      }
+
+      .answer-grid,
+      .candidate-grid,
+      .branch-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .swimlane {
+        grid-template-columns: 1fr;
+      }
+
+      .lane-title {
+        border-bottom: 1px solid #e2e7ef;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>消息接收后的执行链路</h1>
+    <p>
+      这张图基于当前代码实现，而不是目标愿景。结论很直接：消息接收、归一化、Dify 判断、outbox 入队、企微发送这些 Module 都存在，但它们之间的 Interface 仍由人工调用串联，所以当前是“可实机测试”，不是“收到消息后全自动闭环”。
+    </p>
+    <div class="legend">
+      <span class="tag"><span class="dot auto"></span>当前自动执行</span>
+      <span class="tag"><span class="dot manual"></span>当前需要手动触发</span>
+      <span class="tag"><span class="dot parallel"></span>可并行执行</span>
+      <span class="tag"><span class="dot risk"></span>当前断点或风险</span>
+      <span class="tag"><span class="dot future"></span>建议新增调度 Module</span>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <h2>1. 为什么现在未自动化</h2>
+      <div class="answer-grid">
+        <article class="fact">
+          <strong>回调只确认接收</strong>
+          <p><code>POST /api/wecom/callbacks/mcp</code> 完成验签、记录 callback，并创建 <code>MessageIngestionJob</code>。在 real 模式下它必须尽快返回 <code>success</code> 给企微，不能在这个请求里长时间跑 Dify 和发送。</p>
+        </article>
+        <article class="fact">
+          <strong>后续步骤都是独立 Interface</strong>
+          <p>归一化、触发评估、主动答疑、outbox 发送分别暴露为不同路由。代码里没有一个“收到消息后继续推进下一步”的 Orchestrator Module。</p>
+        </article>
+        <article class="fact">
+          <strong>缺少后台 Worker</strong>
+          <p>系统有 pending job 和 pending outbox 的数据模型，但没有常驻 Worker 或调度器自动消费它们。没有消费者，队列表就只是状态记录。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. 当前真实链路</h2>
+      <div class="flow">
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>企微回调进入</h3>
+          <p><code>receive_mcp_callback</code> 验签、解密或解析 body。</p>
+          <small>src/app/api/wecom.py:42</small>
+        </article>
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>记录 callback</h3>
+          <p><code>record_mcp_callback</code> 写入 <code>wecom_mcp_callbacks</code>。</p>
+          <small>src/app/wecom/services.py:24</small>
+        </article>
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>创建归一化 job</h3>
+          <p><code>_build_callback_job</code> 生成 pending 的 <code>MessageIngestionJob</code>。</p>
+          <small>src/app/wecom/services.py:157</small>
+        </article>
+        <article class="node manual" style="grid-column: span 2;">
+          <span class="label">手动</span>
+          <h3>运行 ingestion job</h3>
+          <p>需要调用 <code>/api/wecom/ingestion-jobs/run</code> 或单个 job run。</p>
+          <small>src/app/api/wecom.py:89</small>
+        </article>
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>消息入库</h3>
+          <p><code>ingest_message</code> 写 <code>MessageRaw</code>、<code>Message</code>、群、用户，并计算 <code>mentioned_bot</code>。</p>
+          <small>src/app/wecom/services.py:80</small>
+        </article>
+        <article class="node risk last" style="grid-column: span 2;">
+          <span class="label">断点</span>
+          <h3>没有自动下游</h3>
+          <p>消息入库后不会自动调用 Dify，也不会自动发送 outbox。</p>
+          <small>当前缺少 Orchestrator / Worker</small>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>3. 入库后的两条 AI 分支</h2>
+      <div class="branch-wrap">
+        <article class="branch">
+          <div class="branch-title">
+            <h3>@ 触发群知识库答疑</h3>
+            <span class="tag"><span class="dot manual"></span>当前入口手动</span>
+          </div>
+          <div class="flow">
+            <article class="node manual">
+              <span class="label">手动</span>
+              <h3>触发评估</h3>
+              <p>调用 <code>/api/triggers/evaluate</code>，按 <code>message_id</code> 读取消息。</p>
+              <small>src/app/triggers/services.py:15</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>判断 @</h3>
+              <p>不是 <code>mentioned_bot</code> 直接返回 unmatched。</p>
+              <small>src/app/triggers/services.py:29</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>Dify 调用</h3>
+              <p>构造 <code>inputs.payload</code>，运行 <code>group_knowledge_reply</code>。</p>
+              <small>src/app/dify/services.py:14</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>创建 reply outbox</h3>
+              <p>只有 <code>action=reply</code> 且正文非空时入队。</p>
+              <small>src/app/outbound/services.py:48</small>
+            </article>
+            <article class="node manual lane-end">
+              <span class="label">手动</span>
+              <h3>发送 outbox</h3>
+              <p>需要调用 <code>/api/outbox-messages/{outbox_id}/send</code>。</p>
+              <small>src/app/outbound/services.py:199</small>
+            </article>
+          </div>
+        </article>
+
+        <article class="branch">
+          <div class="branch-title">
+            <h3>非 @ 窗口主动答疑</h3>
+            <span class="tag"><span class="dot manual"></span>当前入口手动</span>
+          </div>
+          <div class="flow">
+            <article class="node manual">
+              <span class="label">手动</span>
+              <h3>窗口扫描</h3>
+              <p>调用 <code>/api/proactive-replies/run</code>，传 <code>chatid</code> 和时间范围。</p>
+              <small>src/app/api/proactive_replies.py:13</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>读取消息窗口</h3>
+              <p>按群和时间范围取消息，组装 members、messages。</p>
+              <small>src/app/proactive_replies/services.py:35</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>Dify 调用</h3>
+              <p>运行 <code>chat_proactive_reminder</code>，输出是否应发送。</p>
+              <small>src/app/proactive_replies/services.py:67</small>
+            </article>
+            <article class="node auto">
+              <span class="label">顺序</span>
+              <h3>系统侧校验</h3>
+              <p>校验 <code>target_userids</code> 和 <code>quote_msgid</code> 必须来自输入。</p>
+              <small>src/app/proactive_replies/services.py:155</small>
+            </article>
+            <article class="node manual lane-end">
+              <span class="label">手动</span>
+              <h3>发送 outbox</h3>
+              <p>创建 proactive outbox 后仍需单独调用发送。</p>
+              <small>src/app/proactive_replies/services.py:188</small>
+            </article>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. 哪些顺序，哪些可并行</h2>
+      <div class="swimlane">
+        <div class="lane-title">必须顺序</div>
+        <div class="lane-body">
+          <div class="lane-flow">
+            <article class="node auto">
+              <h3>回调落库</h3>
+              <p>必须先有 callback/job，才能可靠重放。</p>
+            </article>
+            <article class="node auto">
+              <h3>消息归一化</h3>
+              <p>必须先有 <code>Message</code>，才能做 @ 判断和窗口扫描。</p>
+            </article>
+            <article class="node auto">
+              <h3>Dify 输出校验</h3>
+              <p>必须先校验输出，再创建 outbox。</p>
+            </article>
+            <article class="node auto lane-end">
+              <h3>发送状态回写</h3>
+              <p>必须根据企微返回更新 sent/failed。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+
+      <div class="swimlane">
+        <div class="lane-title">可以并行</div>
+        <div class="lane-body">
+          <div class="lane-flow">
+            <article class="node parallel">
+              <h3>不同 callback job</h3>
+              <p>不同群、不同 callback 的 normalize job 可并行，但同一 job 内当前按消息顺序处理。</p>
+            </article>
+            <article class="node parallel">
+              <h3>@ 分支与窗口分支</h3>
+              <p>同一条消息入库后，@ 答疑和窗口主动答疑可以由不同 Worker 分别决策。</p>
+            </article>
+            <article class="node parallel">
+              <h3>不同 Dify app</h3>
+              <p><code>group_knowledge_reply</code> 与 <code>chat_proactive_reminder</code> 使用不同 key，可独立限流和执行。</p>
+            </article>
+            <article class="node parallel lane-end">
+              <h3>不同 outbox</h3>
+              <p>独立 outbox 可并行发送，但同一幂等键只能发送一次。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>5. 建议的自动闭环</h2>
+      <div class="flow">
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>企微回调</h3>
+          <p>继续快速返回 success，避免企微超时。</p>
+        </article>
+        <article class="node auto" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>消息归一化 Worker</h3>
+          <p>消费 pending ingestion jobs，生成 Message。</p>
+        </article>
+        <article class="node future" style="grid-column: span 2;">
+          <span class="label">新增</span>
+          <h3>Interaction Orchestrator</h3>
+          <p>一个深 Module：对外只暴露“处理新消息”Interface，内部决定哪些 AI 分支需要触发。</p>
+        </article>
+        <article class="node parallel" style="grid-column: span 2;">
+          <span class="label">并行</span>
+          <h3>AI 分支任务</h3>
+          <p>@ 答疑、主动答疑分别执行，输出只写 ai_runs 和 outbox。</p>
+        </article>
+        <article class="node future" style="grid-column: span 2;">
+          <span class="label">新增</span>
+          <h3>Outbox Worker</h3>
+          <p>消费 pending outbox，统一限流、重试、失败记录。</p>
+        </article>
+        <article class="node auto last" style="grid-column: span 2;">
+          <span class="label">自动</span>
+          <h3>企微发送</h3>
+          <p>reply/proactive 场景走群 <code>appchat/send</code>，状态回写。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>6. 架构改进候选</h2>
+      <div class="candidate-grid">
+        <article class="candidate">
+          <span class="priority">P0 实机闭环</span>
+          <h3>新增 Interaction Orchestrator Module</h3>
+          <p>把“消息入库后应该触发哪些 Dify 分支”集中到一个 Interface 后面。收益是 Locality：触发规则、顺序、并行、幂等都在一处维护。</p>
+        </article>
+        <article class="candidate">
+          <span class="priority">P0 实机闭环</span>
+          <h3>新增两个 Worker Adapter</h3>
+          <p>一个消费 <code>MessageIngestionJob</code>，一个消费 <code>OutboxMessage</code>。收益是 Leverage：现有手动接口仍可保留，但自动化不依赖人工点击。</p>
+        </article>
+        <article class="candidate">
+          <span class="priority">P1 稳定性</span>
+          <h3>补 InteractionRun 状态</h3>
+          <p>现在有 ai_runs/outbox，但缺少一次消息交互的总状态。新增状态可让排障知道卡在 normalize、Dify、outbox 还是 send。</p>
+        </article>
+      </div>
+    </section>
+
+    <section>
+      <h2>7. 代码依据</h2>
+      <ul class="source-list">
+        <li><code>src/app/api/wecom.py:42</code> 接收企微 callback，只记录并返回。</li>
+        <li><code>src/app/wecom/services.py:62</code> callback 后创建 pending ingestion job。</li>
+        <li><code>src/app/api/wecom.py:89</code> 归一化 job 目前通过独立接口运行。</li>
+        <li><code>src/app/triggers/services.py:15</code> @ 触发评估目前通过独立接口运行。</li>
+        <li><code>src/app/api/proactive_replies.py:13</code> 主动答疑窗口扫描目前通过独立接口运行。</li>
+        <li><code>src/app/outbound/services.py:199</code> outbox 发送目前通过独立接口运行。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
