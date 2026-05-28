@@ -41,6 +41,7 @@ def evaluate_triggers(
     events = []
     for rule in rules:
         event, duplicated = _get_or_create_trigger_event(session, rule, message)
+        session.commit()
         workflow = get_enabled_workflow(session, workflow_code=rule.workflow_code)
         ai_run = run_dify_workflow_for_trigger(
             session,
@@ -51,6 +52,7 @@ def evaluate_triggers(
         )
         outbox_result = create_reply_outbox_for_ai_run(session, ai_run)
         event.status = "handled"
+        session.commit()
         events.append(
             _event_result(
                 event,
@@ -59,8 +61,6 @@ def evaluate_triggers(
                 outbox_result=outbox_result,
             )
         )
-
-    session.commit()
 
     return {"matched": bool(events), "events": events}
 

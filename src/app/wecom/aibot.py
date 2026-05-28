@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Callable
 
@@ -101,6 +102,35 @@ async def process_incoming_aibot_frame(
     auto_send: bool = False,
     normalizer: AiBotFrameNormalizer | None = None,
 ) -> dict[str, Any]:
+    result = _ingest_and_evaluate_aibot_frame(
+        session,
+        frame=frame,
+        settings=settings,
+        dify_client=dify_client,
+        normalizer=normalizer,
+    )
+    if not result["accepted"] or (result.get("ingest") or {}).get("duplicated"):
+        return result
+
+    if auto_send and sender is not None:
+        result["sent_outboxes"] = await _send_trigger_outboxes(
+            session,
+            trigger_result=result["trigger"],
+            sender=sender,
+        )
+        session.commit()
+
+    return result
+
+
+def _ingest_and_evaluate_aibot_frame(
+    session: Session,
+    *,
+    frame: dict[str, Any],
+    settings: Settings,
+    dify_client: DifyClient,
+    normalizer: AiBotFrameNormalizer | None = None,
+) -> dict[str, Any]:
     payload = (normalizer or AiBotFrameNormalizer()).normalize(frame)
     if payload is None:
         return {
@@ -129,21 +159,30 @@ async def process_incoming_aibot_frame(
             dify_client=dify_client,
         )
 
-    sent_outboxes = []
-    if auto_send and sender is not None:
-        sent_outboxes = await _send_trigger_outboxes(
-            session,
-            trigger_result=trigger_result,
-            sender=sender,
-        )
-        session.commit()
-
     return {
         "accepted": True,
         "ingest": ingest_result,
         "trigger": trigger_result,
-        "sent_outboxes": sent_outboxes,
+        "sent_outboxes": [],
     }
+
+
+def _ingest_and_evaluate_aibot_frame_in_new_session(
+    session_factory: sessionmaker[Session],
+    *,
+    frame: dict[str, Any],
+    settings: Settings,
+    dify_client: DifyClient,
+    normalizer: AiBotFrameNormalizer,
+) -> dict[str, Any]:
+    with session_factory() as session:
+        return _ingest_and_evaluate_aibot_frame(
+            session,
+            frame=frame,
+            settings=settings,
+            dify_client=dify_client,
+            normalizer=normalizer,
+        )
 
 
 class WeComAiBotLongConnectionWorker:
@@ -164,12 +203,19 @@ class WeComAiBotLongConnectionWorker:
         self.auto_send = auto_send
         self.ws_client = (ws_client_factory or _build_ws_client)(settings)
         self.normalizer = AiBotFrameNormalizer()
+        self._send_lock = asyncio.Lock()
+        self._tasks: set[asyncio.Task] = set()
 
     async def start(self) -> None:
         self._register_handlers()
         await self.ws_client.connect()
 
     async def stop(self) -> None:
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
         await self.ws_client.disconnect()
 
     def _register_handlers(self) -> None:
@@ -184,22 +230,59 @@ class WeComAiBotLongConnectionWorker:
             self.ws_client.on(event_name, self._handle_frame)
 
     async def _handle_frame(self, frame: dict[str, Any]) -> None:
-        with self.session_factory() as session:
-            result = await process_incoming_aibot_frame(
-                session,
-                frame=frame,
-                settings=self.settings,
-                dify_client=self.dify_client,
+        task = asyncio.create_task(self._process_frame(frame))
+        self._tasks.add(task)
+        task.add_done_callback(self._handle_task_done)
+
+    def _handle_task_done(self, task: asyncio.Task) -> None:
+        self._tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception("AiBot background frame task failed")
+
+    async def _process_frame(self, frame: dict[str, Any]) -> None:
+        callback_stream_id = None
+        if (
+            self.auto_send
+            and self.sender is not None
+            and _frame_mentions_reply_bot(frame, self.settings)
+        ):
+            callback_stream_id = await _begin_callback_reply_stream(
                 sender=self.sender,
-                auto_send=self.auto_send,
-                normalizer=self.normalizer,
+                frame=frame,
             )
-            logger.info(
-                "Processed AiBot frame accepted=%s matched=%s sent=%s",
-                result["accepted"],
-                result["trigger"]["matched"],
-                len(result["sent_outboxes"]),
-            )
+
+        result = await asyncio.to_thread(
+            _ingest_and_evaluate_aibot_frame_in_new_session,
+            self.session_factory,
+            frame=frame,
+            settings=self.settings,
+            dify_client=self.dify_client,
+            normalizer=self.normalizer,
+        )
+
+        duplicated = (result.get("ingest") or {}).get("duplicated")
+        if self.auto_send and self.sender is not None and not duplicated:
+            async with self._send_lock:
+                with self.session_factory() as session:
+                    result["sent_outboxes"] = await _send_trigger_outboxes(
+                        session,
+                        trigger_result=result["trigger"],
+                        sender=self.sender,
+                        frame=frame,
+                        callback_stream_id=callback_stream_id,
+                    )
+                    session.commit()
+
+        logger.info(
+            "Processed AiBot frame accepted=%s matched=%s sent=%s",
+            result["accepted"],
+            result["trigger"]["matched"],
+            len(result["sent_outboxes"]),
+        )
 
 
 async def _send_trigger_outboxes(
@@ -207,8 +290,15 @@ async def _send_trigger_outboxes(
     *,
     trigger_result: dict[str, Any],
     sender: Any,
+    frame: dict[str, Any] | None = None,
+    callback_stream_id: str | None = None,
 ) -> list[dict[str, Any]]:
     sent = []
+    delivery_sender = _callback_bound_sender(
+        sender,
+        frame=frame,
+        callback_stream_id=callback_stream_id,
+    )
     for event in trigger_result.get("events", []):
         outbox_info = event.get("outbox")
         if not isinstance(outbox_info, dict) or not outbox_info.get("outbox_id"):
@@ -216,18 +306,120 @@ async def _send_trigger_outboxes(
         outbox, duplicated = await send_outbox_message_async(
             session,
             outbox_identifier=str(outbox_info["outbox_id"]),
-            sender=sender,
+            sender=delivery_sender,
         )
         sent.append(outbox_to_dict(outbox, duplicated=duplicated))
     return sent
 
 
+async def _begin_callback_reply_stream(
+    *,
+    sender: Any,
+    frame: dict[str, Any],
+) -> str | None:
+    begin = getattr(sender, "begin_callback_stream_async", None)
+    if begin is None:
+        return None
+    try:
+        result = await begin(frame, "正在查询相关资料，请稍等。")
+    except Exception:
+        logger.exception("Failed to begin AiBot callback stream")
+        return None
+    if isinstance(result, dict) and result.get("success"):
+        stream_id = result.get("stream_id")
+        return str(stream_id) if stream_id else None
+    logger.warning("AiBot callback stream begin failed: %s", result)
+    return None
+
+
+def _callback_bound_sender(
+    sender: Any,
+    *,
+    frame: dict[str, Any] | None,
+    callback_stream_id: str | None,
+) -> Any:
+    if frame is None:
+        return sender
+    if getattr(sender, "send_callback_final_async", None) is None:
+        return sender
+    return _CallbackBoundReplySender(
+        sender,
+        frame=frame,
+        callback_stream_id=callback_stream_id,
+    )
+
+
+class _CallbackBoundReplySender:
+    def __init__(
+        self,
+        sender: Any,
+        *,
+        frame: dict[str, Any],
+        callback_stream_id: str | None,
+    ) -> None:
+        self.sender = sender
+        self.frame = frame
+        self.callback_stream_id = callback_stream_id
+
+    async def send_async(self, outbox: OutboxMessage) -> dict[str, Any]:
+        return await self.sender.send_callback_final_async(
+            outbox,
+            frame=self.frame,
+            stream_id=self.callback_stream_id,
+        )
+
+
+def _frame_mentions_reply_bot(frame: dict[str, Any], settings: Settings) -> bool:
+    body = frame.get("body")
+    if not isinstance(body, dict):
+        return False
+
+    bot_id = settings.effective_reply_aibot_id
+    bot_name = settings.effective_reply_aibot_name
+    mentioned_values = _mention_values(body.get("mentioned_users"))
+    mentioned_values.update(_mention_values(body.get("mentions")))
+    if bot_id and bot_id in mentioned_values:
+        return True
+    if bot_name and bot_name in mentioned_values:
+        return True
+
+    content = _frame_text_content(body)
+    return bool(bot_name and f"@{bot_name}" in content)
+
+
+def _mention_values(value: Any) -> set[str]:
+    values: set[str] = set()
+    if not isinstance(value, list):
+        return values
+    for item in value:
+        if isinstance(item, str):
+            values.add(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+        for key in ("userid", "user_id", "id", "name"):
+            if item.get(key) is not None:
+                values.add(str(item[key]))
+    return values
+
+
+def _frame_text_content(body: dict[str, Any]) -> str:
+    text = body.get("text")
+    if isinstance(text, dict) and text.get("content") is not None:
+        return str(text["content"])
+    if body.get("msgtype") == "mixed":
+        return _mixed_text(body.get("mixed"))
+    return ""
+
+
 def _build_ws_client(settings: Settings) -> Any:
     missing = []
-    if not settings.wecom_aibot_id:
-        missing.append("WECOM_AIBOT_ID")
-    if not settings.wecom_aibot_secret:
-        missing.append("WECOM_AIBOT_SECRET")
+    bot_id = settings.effective_reply_aibot_id
+    bot_secret = settings.effective_reply_aibot_secret
+    if not bot_id:
+        missing.append("WECOM_REPLY_AIBOT_ID")
+    if not bot_secret:
+        missing.append("WECOM_REPLY_AIBOT_SECRET")
     if missing:
         raise ValueError(f"{', '.join(missing)} are required for AiBot long connection")
 
@@ -237,9 +429,9 @@ def _build_ws_client(settings: Settings) -> Any:
         raise RuntimeError("wecom-aibot-sdk is required for AiBot long connection") from exc
 
     return WSClient(
-        settings.wecom_aibot_id,
-        settings.wecom_aibot_secret,
-        ws_url=settings.wecom_aibot_ws_url or "",
+        bot_id,
+        bot_secret,
+        ws_url=settings.effective_reply_aibot_ws_url or "",
         reconnect_interval=1000,
         max_reconnect_attempts=settings.wecom_max_retries,
         heartbeat_interval=30000,

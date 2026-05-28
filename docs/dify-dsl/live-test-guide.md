@@ -20,9 +20,16 @@ DIFY_USER=wecom-bot-system
 企微智能机器人长连接实机链路需要同时配置：
 
 ```env
-WECOM_AIBOT_ID=
-WECOM_AIBOT_SECRET=
-WECOM_AIBOT_NAME=机器人
+WECOM_REPLY_AIBOT_ID=
+WECOM_REPLY_AIBOT_SECRET=
+WECOM_REPLY_AIBOT_NAME=智能机器人
+
+# 主动提醒采集预留；当前项目还没有内置自动拉群消息调度器。
+WECOM_INTENT_AIBOT_ID=
+WECOM_INTENT_AIBOT_SECRET=
+WECOM_BOT_ID=
+WECOM_BOT_SECRET=
+
 WECOM_SENDER_MODE=aibot_ws
 ```
 
@@ -37,14 +44,13 @@ WECOM_GROUP_BOT_WEBHOOK_URL=
 
 ## @ 答疑测试
 
-1. 启动 API 服务。
-2. 启动长连接 worker：
+1. 一键启动 API 服务和长连接 worker：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_wecom_aibot_worker.py
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1
 ```
 
-3. 在测试群里 @ 机器人发送问题。
+2. 在测试群里 @ 回复机器人发送问题。
 
 长连接 worker 会自动完成：
 
@@ -104,4 +110,5 @@ POST /api/outbox-messages/{outbox_id}/send
 ## 当前未自动化项
 
 - 非 @ 消息不会即时回复，主动答疑仍需要手动或调度调用 `/api/proactive-replies/run`。
+- 原意图机器人已预留为消息读取配置，但项目内尚未把 `get_msg_chat_list/get_message` 做成常驻调度器；没有入库消息时主动答疑无法判断。
 - `quote_msgid` 已保存到 outbox 内容中，但当前企微发送器还没有真正调用“引用消息”能力。

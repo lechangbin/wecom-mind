@@ -139,8 +139,11 @@
 
 - 新增 `AiBotFrameNormalizer`，将长连接 SDK frame 转成现有 `MessageIngestRequest`。
 - 新增 `process_incoming_aibot_frame()`，完成 `ingest_message -> evaluate_triggers -> Dify -> outbox -> send` 的 @ 消息闭环。
-- 新增 `WeComAiBotWsMessageSender`，支持通过 SDK `send_message(chatid, body)` 发送 markdown/template_card。
+- 长连接 worker 收到 frame 后快速提交后台任务并返回；入库、Dify blocking 调用和发送在后台任务中执行，避免多个账号连续 @ 时阻塞后续 frame。
+- 新增 `WeComAiBotWsMessageSender`，支持 @ 回调绑定 `reply_stream(frame, stream_id, ...)` 回复，也支持主动 `send_message(chatid, body)` 推送 markdown/template_card。
+- `trigger_event` 与 `ai_run=running` 写入后会先提交事务，再调用 Dify blocking，避免 SQLite 写锁导致后续 @ 消息只显示占位回复。
 - 新增 `WeComAiBotLongConnectionWorker` 和 `scripts/run_wecom_aibot_worker.py`，用于本地启动长连接常驻进程。
+- 支持回复机器人与意图/拉消息机器人分离：`WECOM_REPLY_AIBOT_*` 用于 @ 回复和发送，`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 预留给消息读取和主动提醒采集。
 - 非 @ 消息只入库，不立即调用 Dify 或发送；主动提醒仍通过 `/api/proactive-replies/run` 扫描本地消息窗口。
 
 当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息拉取仍作为补漏能力后续接入，不作为主接收入口。
@@ -173,8 +176,8 @@ DIFY_CLIENT_MODE=mock
 DIFY_CLIENT_MODE=real
 DIFY_BASE_URL=https://api.dify.ai/v1
 DIFY_API_KEY=your-dify-api-key
-DIFY_TIMEOUT_SECONDS=30
-DIFY_MAX_RETRIES=1
+DIFY_TIMEOUT_SECONDS=120
+DIFY_MAX_RETRIES=0
 DIFY_USER=wecom-bot-system
 ```
 
@@ -230,9 +233,23 @@ webhook 模式不调用 `gettoken`，text 消息会把 `target_userids` 映射�
 启用企业微信智能机器人长连接实机链路：
 
 ```env
-WECOM_AIBOT_ID=your-bot-id
-WECOM_AIBOT_SECRET=your-bot-secret
+# 兼容兜底字段：未配置分角色机器人时使用。
+WECOM_AIBOT_ID=
+WECOM_AIBOT_SECRET=
 WECOM_AIBOT_NAME=机器人
+
+# @ 回复与发送使用的机器人。
+WECOM_REPLY_AIBOT_ID=your-reply-bot-id
+WECOM_REPLY_AIBOT_SECRET=your-reply-bot-secret
+WECOM_REPLY_AIBOT_NAME=智能机器人
+
+# 非 @ 消息读取、主动提醒采集预留的机器人；当前自动拉群消息尚未内置调度。
+WECOM_INTENT_AIBOT_ID=your-intent-bot-id
+WECOM_INTENT_AIBOT_SECRET=your-intent-bot-secret
+WECOM_INTENT_AIBOT_NAME=智能机器人
+WECOM_BOT_ID=your-intent-bot-id
+WECOM_BOT_SECRET=your-intent-bot-secret
+
 WECOM_SENDER_MODE=aibot_ws
 DIFY_CLIENT_MODE=real
 DIFY_BASE_URL=https://api.dify.ai/v1
@@ -240,26 +257,26 @@ DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=your-group-reply-key
 DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-proactive-key
 ```
 
-Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。
+Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。当前长连接 worker 只使用 `WECOM_REPLY_AIBOT_*`；`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 已作为后续自动拉消息和主动提醒采集的配置入口。
 
-3. 启动 API：
-
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --reload
-```
-
-另开一个终端启动智能机器人长连接 worker：
+3. 一键启动 API 和智能机器人长连接 worker：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_wecom_aibot_worker.py
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1
 ```
 
-实机链路为：测试群发消息 -> worker 入库 -> @ 消息触发 Dify -> 创建 outbox -> 长连接发送回复。
+默认 API 地址为 `http://127.0.0.1:8010`，日志写入 `logs/`。如需改端口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1 -Port 8000
+```
+
+实机链路为：测试群发消息 -> worker 收到 @ frame 后先发 callback-bound stream 占位 -> 入库 -> 触发 Dify -> 创建 outbox -> 用同一 stream 发送最终回复。
 
 4. 检查健康接口：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8010/health
 ```
 
 ## 接口示例

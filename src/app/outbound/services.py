@@ -10,6 +10,9 @@ from app.outbound.schemas import OutboxCreateRequest
 from app.outbound.sender import WeComMessageSender
 
 
+OUT_OF_SCOPE_REPLY_CONTENT = "当前问题不属于我的回答范围，请围绕本群知识库相关问题提问。"
+
+
 def create_outbox_message(
     session: Session,
     payload: OutboxCreateRequest,
@@ -177,7 +180,13 @@ def _reply_source(
 def _reply_payload(ai_run: AiRun) -> dict[str, str] | None:
     output_json = ai_run.output_json if isinstance(ai_run.output_json, dict) else {}
     if ai_run.workflow_code == "group_knowledge_reply":
-        if output_json.get("action") != "reply":
+        action = output_json.get("action")
+        if action == "out_of_scope":
+            return {
+                "reply_type": "markdown",
+                "content": OUT_OF_SCOPE_REPLY_CONTENT,
+            }
+        if action != "reply":
             return None
         content = str(output_json.get("content") or "")
         return {"reply_type": "markdown", "content": content}

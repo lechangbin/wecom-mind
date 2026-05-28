@@ -115,10 +115,12 @@ class WeComAiBotWsMessageSender:
         if settings is None:
             raise WeComApiError("settings are required for WECOM_SENDER_MODE=aibot_ws")
         missing = []
-        if not settings.wecom_aibot_id:
-            missing.append("WECOM_AIBOT_ID")
-        if not settings.wecom_aibot_secret:
-            missing.append("WECOM_AIBOT_SECRET")
+        bot_id = settings.effective_reply_aibot_id
+        bot_secret = settings.effective_reply_aibot_secret
+        if not bot_id:
+            missing.append("WECOM_REPLY_AIBOT_ID")
+        if not bot_secret:
+            missing.append("WECOM_REPLY_AIBOT_SECRET")
         if missing:
             raise WeComApiError(
                 f"{', '.join(missing)} are required for WECOM_SENDER_MODE=aibot_ws"
@@ -132,9 +134,9 @@ class WeComAiBotWsMessageSender:
             ) from exc
 
         self.ws_client = WSClient(
-            settings.wecom_aibot_id,
-            settings.wecom_aibot_secret,
-            ws_url=settings.wecom_aibot_ws_url or "",
+            bot_id,
+            bot_secret,
+            ws_url=settings.effective_reply_aibot_ws_url or "",
             request_timeout=settings.wecom_timeout_seconds * 1000,
             max_reconnect_attempts=settings.wecom_max_retries,
         )
@@ -166,6 +168,76 @@ class WeComAiBotWsMessageSender:
                 "error_message": _errmsg(raw_response),
                 "raw_response": raw_response,
             }
+        return _success_result(_normalize_ws_response(raw_response))
+
+    async def begin_callback_stream_async(
+        self,
+        frame: dict[str, Any],
+        content: str = "正在查询相关资料，请稍等。",
+    ) -> dict[str, Any]:
+        stream_id = f"stream_{uuid4().hex[:12]}"
+        try:
+            if self._owns_client:
+                await self.ws_client.connect()
+            raw_response = await self.ws_client.reply_stream(
+                frame,
+                stream_id,
+                content,
+                False,
+            )
+        except Exception as exc:
+            return {
+                "success": False,
+                "error_code": "WECOM_AIBOT_WS_ERROR",
+                "error_message": str(exc),
+                "raw_response": {"errmsg": str(exc)},
+            }
+
+        result = _success_result(_normalize_ws_response(raw_response))
+        result["stream_id"] = stream_id
+        return result
+
+    async def send_callback_final_async(
+        self,
+        outbox: OutboxMessage,
+        *,
+        frame: dict[str, Any],
+        stream_id: str | None,
+    ) -> dict[str, Any]:
+        payload = _aibot_ws_payload(outbox)
+        try:
+            if self._owns_client:
+                await self.ws_client.connect()
+
+            if payload.get("msgtype") == "markdown":
+                final_stream_id = stream_id or f"stream_{uuid4().hex[:12]}"
+                raw_response = await self.ws_client.reply_stream(
+                    frame,
+                    final_stream_id,
+                    payload["markdown"]["content"],
+                    True,
+                )
+            elif payload.get("msgtype") == "template_card":
+                raw_response = await self.ws_client.reply_template_card(
+                    frame,
+                    payload["template_card"],
+                )
+            else:
+                raw_response = await self.ws_client.reply(frame, payload)
+        except Exception as exc:
+            return {
+                "success": False,
+                "error_code": "WECOM_AIBOT_WS_ERROR",
+                "error_message": str(exc),
+                "raw_response": {"errmsg": str(exc)},
+            }
+        finally:
+            if self._owns_client:
+                try:
+                    await self.ws_client.disconnect()
+                except Exception:
+                    pass
+
         return _success_result(_normalize_ws_response(raw_response))
 
     def send(self, outbox: OutboxMessage) -> dict[str, Any]:

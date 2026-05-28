@@ -9,6 +9,7 @@ from app.api.ai_runs import router as ai_runs_router
 from app.api.health import router as health_router
 from app.api.outbox import router as outbox_router
 from app.api.proactive_replies import router as proactive_replies_router
+from app.api.scheduled_intents import router as scheduled_intents_router
 from app.api.triggers import router as triggers_router
 from app.api.wecom import router as wecom_router
 from app.config.settings import Settings, get_settings
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ai_runs_router)
     app.include_router(outbox_router)
     app.include_router(proactive_replies_router)
+    app.include_router(scheduled_intents_router)
     app.include_router(admin_analytics_router)
 
     return app

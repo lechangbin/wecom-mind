@@ -272,11 +272,11 @@ def _mentioned_bot(
     mentioned_users: list[Any],
     settings: Settings,
 ) -> bool:
-    bot_id = settings.wecom_aibot_id
+    bot_id = settings.effective_reply_aibot_id
     if bot_id and bot_id in {str(user) for user in mentioned_users}:
         return True
 
-    bot_name = settings.wecom_aibot_name
+    bot_name = settings.effective_reply_aibot_name
     if bot_name and content_text and f"@{bot_name}" in content_text:
         return True
 

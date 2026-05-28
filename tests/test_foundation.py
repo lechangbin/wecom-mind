@@ -26,6 +26,43 @@ def test_settings_read_environment(monkeypatch):
     assert settings.dify_api_key == "dify-secret"
 
 
+def test_settings_exposes_reply_and_intent_aibot_roles():
+    settings = Settings(
+        wecom_aibot_id="legacy-bot",
+        wecom_aibot_secret="legacy-secret",
+        wecom_reply_aibot_id="reply-bot",
+        wecom_reply_aibot_secret="reply-secret",
+        wecom_reply_aibot_name="回复机器人",
+        wecom_intent_aibot_id="intent-bot",
+        wecom_intent_aibot_secret="intent-secret",
+        wecom_intent_aibot_name="意图机器人",
+        wecom_bot_id="fetch-bot",
+        wecom_bot_secret="fetch-secret",
+    )
+
+    assert settings.effective_reply_aibot_id == "reply-bot"
+    assert settings.effective_reply_aibot_secret == "reply-secret"
+    assert settings.effective_reply_aibot_name == "回复机器人"
+    assert settings.effective_intent_aibot_id == "intent-bot"
+    assert settings.effective_intent_aibot_secret == "intent-secret"
+    assert settings.effective_intent_aibot_name == "意图机器人"
+
+
+def test_settings_keeps_legacy_aibot_fallbacks():
+    settings = Settings(
+        wecom_aibot_id="legacy-bot",
+        wecom_aibot_secret="legacy-secret",
+        wecom_aibot_name="机器人",
+    )
+
+    assert settings.effective_reply_aibot_id == "legacy-bot"
+    assert settings.effective_reply_aibot_secret == "legacy-secret"
+    assert settings.effective_reply_aibot_name == "机器人"
+    assert settings.effective_intent_aibot_id == "legacy-bot"
+    assert settings.effective_intent_aibot_secret == "legacy-secret"
+    assert settings.effective_intent_aibot_name == "机器人"
+
+
 def test_response_helpers_include_request_id():
     assert success_response({"ok": True}, request_id="req-1") == {
         "success": True,

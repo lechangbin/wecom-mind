@@ -23,16 +23,31 @@ class GroupKnowledgeReplyDifyClient:
         }
 
 
-class ChatProactiveReminderDifyClient:
+class OutOfScopeGroupKnowledgeReplyDifyClient:
     def __init__(self):
         self.calls = []
 
     def run_workflow(self, workflow, input_json):
         self.calls.append((workflow, input_json))
         return {
+            "action": "out_of_scope",
+            "content": "",
+            "reason": "不属于当前知识库答疑范围。",
+            "confidence": 0.86,
+        }
+
+
+class ChatProactiveReminderDifyClient:
+    def __init__(self):
+        self.calls = []
+
+    def run_workflow(self, workflow, input_json):
+        self.calls.append((workflow, input_json))
+        payload = input_json["payload"]
+        return {
             "should_send": True,
-            "target_userids": ["USER_A"],
-            "quote_msgid": "MSG_P1",
+            "target_userids": [payload["members"][0]["userid"]],
+            "quote_msgid": payload["messages"][0]["msgid"],
             "content": "猜你可能想了解这条知识：报价前先确认审批要求。",
             "confidence": 0.82,
         }
@@ -117,6 +132,36 @@ def test_mention_message_uses_group_knowledge_reply_and_creates_reply_outbox(tmp
         assert outbox.content["markdown"]["content"] == "这是来自知识库的答复。"
 
 
+def test_out_of_scope_group_knowledge_reply_creates_fixed_prompt_outbox(tmp_path):
+    dify_client = OutOfScopeGroupKnowledgeReplyDifyClient()
+    client, app = make_client(tmp_path, dify_client=dify_client)
+    message_id = ingest_text_message(
+        client,
+        msgid="MSG_G_OUT",
+        content="@机器人 你能回答什么问题？",
+        mentioned_bot=True,
+    )
+
+    response = client.post("/api/triggers/evaluate", json={"message_id": message_id})
+
+    assert response.status_code == 200
+    event = response.json()["data"]["events"][0]
+    assert event["ai_run"]["status"] == "success"
+    assert event["outbox"]["outbox_id"]
+
+    with app.state.SessionLocal() as session:
+        run = session.scalar(select(AiRun))
+        outbox = session.scalar(select(OutboxMessage))
+        reply = session.scalar(select(BotReply))
+
+        assert run.output_json["action"] == "out_of_scope"
+        assert reply.content
+        assert "不属于" in reply.content
+        assert outbox.scene == "reply"
+        assert outbox.msgtype == "markdown"
+        assert outbox.content["markdown"]["content"] == reply.content
+
+
 def test_proactive_reply_run_uses_chat_proactive_reminder_and_creates_outbox(tmp_path):
     dify_client = ChatProactiveReminderDifyClient()
     client, app = make_client(tmp_path, dify_client=dify_client)
@@ -171,6 +216,39 @@ def test_proactive_reply_run_uses_chat_proactive_reminder_and_creates_outbox(tmp
         assert outbox.msgtype == "markdown"
         assert "<@USER_A>" in outbox.content["markdown"]["content"]
         assert "猜你可能想了解" in outbox.content["markdown"]["content"]
+
+
+def test_legacy_scheduled_intent_endpoint_delegates_to_chat_proactive_reminder(tmp_path):
+    dify_client = ChatProactiveReminderDifyClient()
+    client, app = make_client(tmp_path, dify_client=dify_client)
+    ingest_text_message(
+        client,
+        msgid="MSG_LEGACY_P1",
+        userid="USER_A",
+        content="客户要报价，我不确定审批要求。",
+        create_time=1777827600,
+    )
+
+    response = client.post(
+        "/api/scheduled-intents/run",
+        json={
+            "chatid": "CHAT_STAGE13",
+            "time_range": {
+                "start": "2026-05-04T00:00:00+08:00",
+                "end": "2026-05-04T02:00:00+08:00",
+            },
+            "auto_enqueue": True,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["workflow_code"] == "chat_proactive_reminder"
+    assert data["compatibility_mode"] == "scheduled_intents"
+    assert data["outboxes"][0]["target_userids"] == ["USER_A"]
+
+    workflow, _input_json = dify_client.calls[0]
+    assert workflow.workflow_code == "chat_proactive_reminder"
 
 
 def test_dify_http_client_uses_workflow_specific_api_key():

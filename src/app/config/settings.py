@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     wecom_aibot_secret: str | None = None
     wecom_aibot_ws_url: str | None = None
     wecom_aibot_name: str | None = None
+    wecom_reply_aibot_id: str | None = None
+    wecom_reply_aibot_secret: str | None = None
+    wecom_reply_aibot_ws_url: str | None = None
+    wecom_reply_aibot_name: str | None = None
+    wecom_intent_aibot_id: str | None = None
+    wecom_intent_aibot_secret: str | None = None
+    wecom_intent_aibot_name: str | None = None
+    wecom_bot_id: str | None = None
+    wecom_bot_secret: str | None = None
     wecom_mcp_verify_mode: Literal["mock", "real"] = "mock"
     wecom_sender_mode: Literal["mock", "app", "webhook", "aibot_ws"] = "mock"
     wecom_api_base_url: str = "https://qyapi.weixin.qq.com/cgi-bin"
@@ -38,8 +47,8 @@ class Settings(BaseSettings):
     dify_group_knowledge_reply_api_key: str | None = None
     dify_chat_proactive_reminder_api_key: str | None = None
     dify_client_mode: Literal["mock", "real", "webhook"] = "mock"
-    dify_timeout_seconds: int = 30
-    dify_max_retries: int = 1
+    dify_timeout_seconds: int = 120
+    dify_max_retries: int = 0
     dify_user: str = "wecom-bot-system"
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
@@ -50,6 +59,34 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_log_level(cls, value: str) -> str:
         return value.upper()
+
+    @property
+    def effective_reply_aibot_id(self) -> str | None:
+        return self.wecom_reply_aibot_id or self.wecom_aibot_id
+
+    @property
+    def effective_reply_aibot_secret(self) -> str | None:
+        return self.wecom_reply_aibot_secret or self.wecom_aibot_secret
+
+    @property
+    def effective_reply_aibot_ws_url(self) -> str | None:
+        return self.wecom_reply_aibot_ws_url or self.wecom_aibot_ws_url
+
+    @property
+    def effective_reply_aibot_name(self) -> str | None:
+        return self.wecom_reply_aibot_name or self.wecom_aibot_name
+
+    @property
+    def effective_intent_aibot_id(self) -> str | None:
+        return self.wecom_intent_aibot_id or self.wecom_bot_id or self.wecom_aibot_id
+
+    @property
+    def effective_intent_aibot_secret(self) -> str | None:
+        return self.wecom_intent_aibot_secret or self.wecom_bot_secret or self.wecom_aibot_secret
+
+    @property
+    def effective_intent_aibot_name(self) -> str | None:
+        return self.wecom_intent_aibot_name or self.wecom_aibot_name
 
 
 @lru_cache
