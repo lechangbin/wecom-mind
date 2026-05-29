@@ -63,6 +63,29 @@ def test_settings_keeps_legacy_aibot_fallbacks():
     assert settings.effective_intent_aibot_name == "机器人"
 
 
+def test_message_reconcile_defaults_are_short_window():
+    settings = Settings(_env_file=None)
+
+    assert settings.wecom_message_reconcile_enabled is False
+    assert settings.wecom_message_reconcile_chatids is None
+    assert settings.message_reconcile_chatid_list == []
+    assert settings.wecom_message_reconcile_interval_seconds == 10
+    assert settings.wecom_message_reconcile_lookback_seconds == 12
+    assert settings.wecom_message_reconcile_overlap_seconds == 2
+    assert settings.wecom_message_reconcile_pages == 1
+    assert settings.wecom_message_reconcile_auto_enqueue is True
+    assert settings.wecom_message_reconcile_auto_send is False
+    assert settings.wecom_mcp_config_endpoint == (
+        "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
+    )
+
+
+def test_message_reconcile_chatid_list_parses_csv():
+    settings = Settings(wecom_message_reconcile_chatids=" CHAT_A,CHAT_B ,, CHAT_C ")
+
+    assert settings.message_reconcile_chatid_list == ["CHAT_A", "CHAT_B", "CHAT_C"]
+
+
 def test_response_helpers_include_request_id():
     assert success_response({"ok": True}, request_id="req-1") == {
         "success": True,

@@ -1,5 +1,6 @@
 import asyncio
 import time
+from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -442,6 +443,58 @@ def test_aibot_worker_registers_message_handlers_and_processes_frame(tmp_path):
     response = client.get("/api/outbox-messages")
     assert response.status_code == 200
     assert response.json()["data"]["total"] == 1
+
+
+def test_aibot_worker_dispatches_new_pending_proactive_outbox(tmp_path):
+    settings = Settings(
+        app_env="test",
+        database_url=f"sqlite:///{tmp_path / 'stage14_dispatcher.db'}",
+        wecom_aibot_id="BOT_ID",
+        wecom_aibot_name="机器人",
+        wecom_message_reconcile_auto_send=True,
+    )
+    app = create_app(settings=settings)
+    sender = AsyncRecordingSender()
+    ws_client = FakeWsClient()
+    worker = WeComAiBotLongConnectionWorker(
+        settings=settings,
+        session_factory=app.state.SessionLocal,
+        dify_client=GroupKnowledgeReplyDifyClient(),
+        sender=sender,
+        ws_client_factory=lambda _settings: ws_client,
+    )
+
+    async def run_dispatcher():
+        await worker.start()
+        try:
+            with app.state.SessionLocal() as session:
+                session.add(
+                    OutboxMessage(
+                        outbox_id="out_proactive_dispatch",
+                        scene="proactive",
+                        chatid="CHAT_WS",
+                        target_userids=["USER_A"],
+                        msgtype="markdown",
+                        content={"markdown": {"content": "<@USER_A> 主动补充回复。"}},
+                        source_type="ai_run",
+                        source_id="airun_dispatch",
+                        status="pending",
+                        idempotency_key="proactive_dispatch",
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+                session.commit()
+            await wait_until(lambda: len(sender.sent) == 1)
+        finally:
+            await worker.stop()
+
+    asyncio.run(run_dispatcher())
+
+    assert sender.sent[0].outbox_id == "out_proactive_dispatch"
+    with app.state.SessionLocal() as session:
+        outbox = session.scalar(select(OutboxMessage))
+        assert outbox.status == "sent"
+        assert outbox.external_msgid == "WS_SENT_1"
 
 
 def test_aibot_worker_handler_returns_before_dify_finishes(tmp_path):

@@ -41,6 +41,8 @@
 5. 成功后状态改为 `sent`。
 6. 失败后记录错误并按策略重试。
 
+当前自动客服实机阶段允许补漏 worker 在 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时创建 proactive outbox。`aibot_ws` 模式下由长连接 worker 复用回复机器人 WebSocket 连接派发并回写 `sent/failed`；非 `aibot_ws` sender 仍可直发。独立 Dispatcher 仍作为后续生产化重试、限流和恢复能力。
+
 ### 3.2 流式回复
 
 1. @ 消息触发 Dify streaming。

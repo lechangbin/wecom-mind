@@ -150,6 +150,12 @@ class Message(Base):
         Index("ix_messages_userid_create_time", "userid", "create_time"),
         Index("ix_messages_mentioned_bot_create_time", "mentioned_bot", "create_time"),
         Index("ix_messages_msgtype_create_time", "msgtype", "create_time"),
+        Index(
+            "ix_messages_chatid_sender_type_create_time",
+            "chatid",
+            "sender_type",
+            "create_time",
+        ),
     )
 
     id: Mapped[int] = id_column()
@@ -163,6 +169,8 @@ class Message(Base):
     chattype: Mapped[str] = mapped_column(String(32), nullable=False)
     userid: Mapped[str | None] = mapped_column(String(128))
     msgtype: Mapped[str] = mapped_column(String(64), nullable=False)
+    sender_type: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
+    bot_role: Mapped[str | None] = mapped_column(String(32))
     content_text: Mapped[str | None] = mapped_column(Text)
     normalized_content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     quote_message: Mapped[Any | None] = mapped_column(JSON)

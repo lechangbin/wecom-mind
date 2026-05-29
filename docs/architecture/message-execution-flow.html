@@ -347,11 +347,11 @@
   <header>
     <h1>消息接收后的执行链路</h1>
     <p>
-      这张图基于当前长连接更新分支。结论很直接：智能机器人长连接 Worker 已经能把实时消息串到入库、@ 触发、Dify、outbox 和长连接发送；非 @ 消息仍只入库，主动提醒按窗口扫描手动或调度触发。
+      这张图基于当前长连接与补漏更新分支。结论很直接：智能机器人长连接 Worker 已经能把实时 @ 消息串到入库、Dify、outbox 和 callback-bound stream 发送；非 @ 消息由历史补漏 Worker 短窗口拉取、入库、数据库窗口扫描和 Dify 主动提醒，自动发送则由长连接 Worker 复用同一条回复机器人连接完成。
     </p>
     <div class="legend">
       <span class="tag"><span class="dot auto"></span>当前自动执行</span>
-      <span class="tag"><span class="dot manual"></span>当前需要手动触发</span>
+      <span class="tag"><span class="dot manual"></span>保留手动调试入口</span>
       <span class="tag"><span class="dot parallel"></span>可并行执行</span>
       <span class="tag"><span class="dot risk"></span>当前断点或风险</span>
       <span class="tag"><span class="dot future"></span>建议新增调度 Module</span>
@@ -360,7 +360,7 @@
 
   <main>
     <section>
-      <h2>1. 为什么现在未自动化</h2>
+      <h2>1. 当前自动化边界</h2>
       <div class="answer-grid">
         <article class="fact">
           <strong>主入口已切到长连接</strong>
@@ -371,8 +371,8 @@
           <p><code>process_incoming_aibot_frame</code> 已经把 @ 消息串成 <code>ingest_message -> evaluate_triggers -> Dify -> outbox -> send</code>。</p>
         </article>
         <article class="fact">
-          <strong>主动提醒仍是窗口任务</strong>
-          <p>非 @ 消息只入库，不即时回复；<code>chat_proactive_reminder</code> 仍通过窗口扫描触发，后续可加调度器。</p>
+          <strong>主动提醒是补漏窗口任务</strong>
+          <p>非 @ 消息不在长连接入口即时回复；<code>MessageReconcileWorker</code> 通过数据库窗口触发 <code>chat_proactive_reminder</code>，并只读取用户消息。</p>
         </article>
       </div>
     </section>
@@ -395,7 +395,7 @@
         <article class="node auto" style="grid-column: span 2;">
           <span class="label">自动</span>
           <h3>消息入库</h3>
-          <p><code>ingest_message</code> 写 <code>MessageRaw</code>、<code>Message</code>、群、用户，并计算 <code>mentioned_bot</code>。</p>
+          <p><code>ingest_message</code> 写 <code>MessageRaw</code>、<code>Message</code>、群、用户，并计算 <code>mentioned_bot</code>、<code>sender_type</code>、<code>bot_role</code>。</p>
           <small>src/app/wecom/services.py</small>
         </article>
         <article class="node manual" style="grid-column: span 2;">
@@ -425,13 +425,13 @@
         <article class="branch">
           <div class="branch-title">
             <h3>@ 触发群知识库答疑</h3>
-            <span class="tag"><span class="dot manual"></span>当前入口手动</span>
+            <span class="tag"><span class="dot auto"></span>长连接自动</span>
           </div>
           <div class="flow">
-            <article class="node manual">
-              <span class="label">手动</span>
+            <article class="node auto">
+              <span class="label">自动</span>
               <h3>触发评估</h3>
-              <p>调用 <code>/api/triggers/evaluate</code>，按 <code>message_id</code> 读取消息。</p>
+              <p>长连接 worker 自动调用 <code>evaluate_triggers</code>；手动接口仅用于调试。</p>
               <small>src/app/triggers/services.py:15</small>
             </article>
             <article class="node auto">
@@ -452,10 +452,10 @@
               <p>只有 <code>action=reply</code> 且正文非空时入队。</p>
               <small>src/app/outbound/services.py:48</small>
             </article>
-            <article class="node manual lane-end">
-              <span class="label">手动</span>
+            <article class="node auto lane-end">
+              <span class="label">自动</span>
               <h3>发送 outbox</h3>
-              <p>需要调用 <code>/api/outbox-messages/{outbox_id}/send</code>。</p>
+              <p>@ 回复使用原始 frame 绑定的 <code>reply_stream</code> 自动发送。</p>
               <small>src/app/outbound/services.py:199</small>
             </article>
           </div>
@@ -464,13 +464,13 @@
         <article class="branch">
           <div class="branch-title">
             <h3>非 @ 窗口主动答疑</h3>
-            <span class="tag"><span class="dot manual"></span>当前入口手动</span>
+            <span class="tag"><span class="dot auto"></span>补漏 + 长连接自动</span>
           </div>
           <div class="flow">
-            <article class="node manual">
-              <span class="label">手动</span>
+            <article class="node auto">
+              <span class="label">自动</span>
               <h3>窗口扫描</h3>
-              <p>调用 <code>/api/proactive-replies/run</code>，传 <code>chatid</code> 和时间范围。</p>
+              <p>补漏 worker 按 chatid 和短时间窗口自动扫描；手动接口仅用于调试。</p>
               <small>src/app/api/proactive_replies.py:13</small>
             </article>
             <article class="node auto">
@@ -492,10 +492,10 @@
               <small>src/app/proactive_replies/services.py:155</small>
             </article>
             <article class="node manual lane-end">
-              <span class="label">手动</span>
+              <span class="label">自动/手动</span>
               <h3>发送 outbox</h3>
-              <p>创建 proactive outbox 后仍需单独调用发送。</p>
-              <small>src/app/proactive_replies/services.py:188</small>
+              <p><code>AUTO_SEND=true</code> 时，补漏 worker 创建 pending outbox，长连接 worker 复用回复机器人连接发送。</p>
+              <small>src/app/wecom/aibot.py:288</small>
             </article>
           </div>
         </article>
@@ -577,9 +577,9 @@
           <p>@ 答疑、主动答疑分别执行，输出只写 ai_runs 和 outbox。</p>
         </article>
         <article class="node future" style="grid-column: span 2;">
-          <span class="label">新增</span>
+          <span class="label">后续</span>
           <h3>Outbox Worker</h3>
-          <p>消费 pending outbox，统一限流、重试、失败记录。</p>
+          <p>当前 <code>aibot_ws</code> 自动发送由长连接 worker 消费新建 pending proactive outbox；后续可独立消费 pending outbox，统一限流、重试、失败记录。</p>
         </article>
         <article class="node auto last" style="grid-column: span 2;">
           <span class="label">自动</span>
@@ -595,12 +595,12 @@
         <article class="candidate">
           <span class="priority">P0 实机闭环</span>
           <h3>完善主动提醒调度</h3>
-          <p>现在 @ 链路已自动闭环，下一步是让非 @ 窗口扫描由调度器触发。</p>
+          <p>当前常驻补漏 worker 已接入，下一步重点是自动发送复测、发送失败重试和主动答复频控。</p>
         </article>
         <article class="candidate">
           <span class="priority">P0 实机闭环</span>
-          <h3>补历史消息 Puller</h3>
-          <p>使用 <code>get_msg_chat_list</code> / <code>get_message</code> 做最近 7 天补漏，不作为主接收入口。</p>
+          <h3>接真实历史消息源</h3>
+          <p>把 <code>get_msg_chat_list</code> / <code>get_message</code> 适配到 <code>message_reconcile</code>，使用短窗口补漏，不作为主接收入口。</p>
         </article>
         <article class="candidate">
           <span class="priority">P1 稳定性</span>
@@ -617,8 +617,9 @@
         <li><code>src/app/outbound/sender.py</code> <code>WeComAiBotWsMessageSender</code> 通过长连接发送。</li>
         <li><code>scripts/run_wecom_aibot_worker.py</code> 本地实机测试启动入口。</li>
         <li><code>src/app/triggers/services.py:15</code> @ 触发评估被 worker 自动调用。</li>
-        <li><code>src/app/api/proactive_replies.py:13</code> 主动答疑窗口扫描目前通过独立接口运行。</li>
-        <li><code>src/app/outbound/services.py:199</code> outbox 发送目前通过独立接口运行。</li>
+        <li><code>src/app/wecom/message_reconcile.py</code> 单次历史补漏、幂等入库、数据库驱动主动提醒扫描。</li>
+        <li><code>src/app/api/proactive_replies.py:13</code> 主动答疑窗口扫描仍保留独立接口作为手动调试入口。</li>
+        <li><code>src/app/wecom/message_reconcile_worker.py</code> 在 <code>AUTO_SEND=true</code> 时创建 proactive outbox；<code>src/app/wecom/aibot.py</code> 负责通过长连接发送新建 pending proactive outbox。</li>
       </ul>
     </section>
   </main>

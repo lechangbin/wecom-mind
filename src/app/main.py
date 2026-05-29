@@ -28,6 +28,7 @@ from app.db.defaults import initialize_default_records
 from app.db.session import build_session_factory
 from app.dify.client import build_dify_client
 from app.outbound.sender import build_wecom_message_sender
+from app.wecom.services import backfill_message_sender_classification
 from app.wecom.verifier import build_wecom_callback_verifier
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     initialize_database(app.state.engine)
     app.state.SessionLocal = build_session_factory(app.state.engine)
     initialize_default_records(app.state.SessionLocal)
+    with app.state.SessionLocal() as session:
+        backfill_message_sender_classification(session, settings)
     app.state.wecom_callback_verifier = build_wecom_callback_verifier(settings)
     app.state.dify_client = build_dify_client(settings)
     app.state.wecom_message_sender = build_wecom_message_sender(settings)

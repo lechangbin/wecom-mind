@@ -144,9 +144,23 @@
 - `trigger_event` 与 `ai_run=running` 写入后会先提交事务，再调用 Dify blocking，避免 SQLite 写锁导致后续 @ 消息只显示占位回复。
 - 新增 `WeComAiBotLongConnectionWorker` 和 `scripts/run_wecom_aibot_worker.py`，用于本地启动长连接常驻进程。
 - 支持回复机器人与意图/拉消息机器人分离：`WECOM_REPLY_AIBOT_*` 用于 @ 回复和发送，`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 预留给消息读取和主动提醒采集。
-- 非 @ 消息只入库，不立即调用 Dify 或发送；主动提醒仍通过 `/api/proactive-replies/run` 扫描本地消息窗口。
+- 非 @ 消息默认只入库；启用 `MessageReconcileWorker` 后会按短窗口补漏并从数据库触发 `chat_proactive_reminder`，在 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时可自动发送主动客服答复。
 
-当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息拉取仍作为补漏能力后续接入，不作为主接收入口。
+阶段 15 历史消息补漏与数据库驱动主动提醒预研实现：
+
+- 新增补漏配置：默认 10 秒扫描周期、12 秒拉取窗口、2 秒 overlap。
+- `messages` 单表增加 `sender_type` 和 `bot_role`，用于区分用户消息、回复机器人消息和意图采集机器人消息，不拆分用户/机器人消息表。
+- 应用启动时会轻量回填已有 `messages` 行的 sender 分类，避免旧 SQLite 数据中机器人消息被默认当成用户消息扫描。
+- 入库幂等增强：真实 `msgid` 会跨 `source` 去重，避免同一条消息先由长连接入库、再由历史补漏入库时重复写入。
+- `src/app/wecom/message_reconcile.py` 提供单次补漏执行能力：计算窗口、调用注入的历史消息源、幂等入库、从数据库窗口触发 `chat_proactive_reminder`、成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
+- 新增 `WeComMcpMessageSource`，通过意图/拉消息机器人获取 msg MCP 配置，并调用 `get_message` 拉取群历史消息。
+- 新增 `MessageReconcileWorker` 和 `scripts/run_message_reconcile_worker.py`，可按 `WECOM_MESSAGE_RECONCILE_CHATIDS` 常驻扫描多个群。
+- `start-services.ps1` 会在 `WECOM_MESSAGE_RECONCILE_ENABLED=true` 时同时启动补漏 worker。
+- 主动提醒扫描改为 SQL 时间窗口查询，只读取 `sender_type=user` 的用户消息。
+- `chat_proactive_reminder` 输入会携带由 `trigger_events` 生成的 `handled_records`，避免重复回答已经由 @ 回复处理过的消息。
+- `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时，补漏 worker 创建 proactive outbox；`WECOM_SENDER_MODE=aibot_ws` 下由长连接 worker 复用同一条回复机器人连接发送并回写 `sent/failed`，其他 sender 模式仍可由补漏 worker 直发。
+
+当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息补漏已具备真实 MCP 消息源适配和常驻 worker，但仍不作为主接收入口。
 
 ## 本地启动
 
@@ -243,12 +257,23 @@ WECOM_REPLY_AIBOT_ID=your-reply-bot-id
 WECOM_REPLY_AIBOT_SECRET=your-reply-bot-secret
 WECOM_REPLY_AIBOT_NAME=智能机器人
 
-# 非 @ 消息读取、主动提醒采集预留的机器人；当前自动拉群消息尚未内置调度。
+# 非 @ 消息读取、主动提醒采集使用的机器人；需要具备群消息读取权限。
 WECOM_INTENT_AIBOT_ID=your-intent-bot-id
 WECOM_INTENT_AIBOT_SECRET=your-intent-bot-secret
 WECOM_INTENT_AIBOT_NAME=智能机器人
 WECOM_BOT_ID=your-intent-bot-id
 WECOM_BOT_SECRET=your-intent-bot-secret
+
+# 历史消息补漏配置。自动客服实机测试只应先配置测试群。
+WECOM_MESSAGE_RECONCILE_ENABLED=false
+WECOM_MESSAGE_RECONCILE_CHATIDS=
+WECOM_MESSAGE_RECONCILE_INTERVAL_SECONDS=10
+WECOM_MESSAGE_RECONCILE_LOOKBACK_SECONDS=12
+WECOM_MESSAGE_RECONCILE_OVERLAP_SECONDS=2
+WECOM_MESSAGE_RECONCILE_PAGES=1
+WECOM_MESSAGE_RECONCILE_AUTO_ENQUEUE=true
+WECOM_MESSAGE_RECONCILE_AUTO_SEND=false
+WECOM_MCP_CONFIG_ENDPOINT=https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config
 
 WECOM_SENDER_MODE=aibot_ws
 DIFY_CLIENT_MODE=real
@@ -257,7 +282,9 @@ DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=your-group-reply-key
 DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-proactive-key
 ```
 
-Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。当前长连接 worker 只使用 `WECOM_REPLY_AIBOT_*`；`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 已作为后续自动拉消息和主动提醒采集的配置入口。
+自动客服实机测试阶段可在本地 `.env` 将 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true`，但示例配置保持 `false` 作为安全默认。`aibot_ws` 自动发送必须同时启动长连接 worker，因为主动回复由它复用回复机器人 WebSocket 连接派发。
+
+Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。长连接 @ 回复和主动发送使用 `WECOM_REPLY_AIBOT_*`；历史消息补漏和主动提醒采集使用 `WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*`。
 
 3. 一键启动 API 和智能机器人长连接 worker：
 
@@ -602,4 +629,4 @@ tests/
 
 ## 下一阶段怎么继续
 
-下一阶段建议进入真实企微消息拉取 puller、真实调度器、课程展示前端或 Dify streaming，在已有查询接口、消息、触发、ai_runs、outbox、会话段、用户画像、主动意图、真实 Dify blocking、真实企微出站发送适配、真实企微回调验签解密和 normalize 入库任务处理器基础上继续扩展。继续前只读取该阶段需要的文档；复杂权限和统计宽表仍建议留到后续阶段。
+下一阶段建议进入真实企微历史消息读取适配、常驻补漏 worker、课程展示前端或 Dify streaming，在已有查询接口、消息、触发、ai_runs、outbox、会话段、用户画像、主动意图、真实 Dify blocking、真实企微出站发送适配、真实企微回调验签解密、normalize 入库任务处理器和单次消息补漏模块基础上继续扩展。继续前只读取该阶段需要的文档；复杂权限和统计宽表仍建议留到后续阶段。

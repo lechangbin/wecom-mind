@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any, Callable
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config.settings import Settings
@@ -205,10 +207,16 @@ class WeComAiBotLongConnectionWorker:
         self.normalizer = AiBotFrameNormalizer()
         self._send_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
+        self._outbox_dispatch_started_at: datetime | None = None
 
     async def start(self) -> None:
         self._register_handlers()
         await self.ws_client.connect()
+        if self.auto_send and self.sender is not None and self.settings.wecom_message_reconcile_auto_send:
+            self._outbox_dispatch_started_at = datetime.now(timezone.utc)
+            task = asyncio.create_task(self._dispatch_proactive_outboxes_forever())
+            self._tasks.add(task)
+            task.add_done_callback(self._handle_task_done)
 
     async def stop(self) -> None:
         tasks = list(self._tasks)
@@ -284,6 +292,31 @@ class WeComAiBotLongConnectionWorker:
             len(result["sent_outboxes"]),
         )
 
+    async def _dispatch_proactive_outboxes_forever(self) -> None:
+        while True:
+            try:
+                sent = await self._dispatch_proactive_outboxes_once()
+                if sent:
+                    logger.info("Dispatched proactive outboxes count=%s", sent)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Proactive outbox dispatch failed")
+            await asyncio.sleep(0.25)
+
+    async def _dispatch_proactive_outboxes_once(self) -> int:
+        if self.sender is None:
+            return 0
+        async with self._send_lock:
+            with self.session_factory() as session:
+                sent = await _send_pending_proactive_outboxes(
+                    session,
+                    sender=self.sender,
+                    created_after=self._outbox_dispatch_started_at,
+                )
+                session.commit()
+                return sent
+
 
 async def _send_trigger_outboxes(
     session: Session,
@@ -310,6 +343,37 @@ async def _send_trigger_outboxes(
         )
         sent.append(outbox_to_dict(outbox, duplicated=duplicated))
     return sent
+
+
+async def _send_pending_proactive_outboxes(
+    session: Session,
+    *,
+    sender: Any,
+    created_after: datetime | None,
+    limit: int = 10,
+) -> int:
+    query = (
+        select(OutboxMessage)
+        .where(
+            OutboxMessage.scene == "proactive",
+            OutboxMessage.status == "pending",
+        )
+        .order_by(OutboxMessage.created_at, OutboxMessage.id)
+        .limit(limit)
+    )
+    if created_after is not None:
+        query = query.where(OutboxMessage.created_at >= created_after)
+
+    sent_count = 0
+    for outbox in session.scalars(query).all():
+        sent, duplicated = await send_outbox_message_async(
+            session,
+            outbox_identifier=outbox.outbox_id,
+            sender=sender,
+        )
+        if not duplicated and sent.status == "sent":
+            sent_count += 1
+    return sent_count
 
 
 async def _begin_callback_reply_stream(

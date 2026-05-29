@@ -100,9 +100,28 @@ function Start-ServiceProcess {
     }
 }
 
+function Get-DotEnvValue {
+    param([string]$Key)
+
+    $envPath = Join-Path $Root ".env"
+    if (-not (Test-Path $envPath)) {
+        return $null
+    }
+
+    $line = Get-Content -LiteralPath $envPath |
+        Where-Object { $_ -match "^\s*$([regex]::Escape($Key))\s*=" } |
+        Select-Object -Last 1
+    if (-not $line) {
+        return $null
+    }
+
+    return (($line -split "=", 2)[1]).Trim().Trim('"').Trim("'")
+}
+
 if (-not $NoStopExisting) {
     Stop-ExistingProjectProcess "uvicorn app\.main:app"
     Stop-ExistingProjectProcess "scripts\\run_wecom_aibot_worker\.py"
+    Stop-ExistingProjectProcess "scripts\\run_message_reconcile_worker\.py"
     Start-Sleep -Seconds 1
 }
 
@@ -110,6 +129,8 @@ $ApiOut = Join-Path $Logs "api.out.log"
 $ApiErr = Join-Path $Logs "api.err.log"
 $WorkerOut = Join-Path $Logs "wecom-aibot-worker.out.log"
 $WorkerErr = Join-Path $Logs "wecom-aibot-worker.err.log"
+$ReconcileOut = Join-Path $Logs "message-reconcile-worker.out.log"
+$ReconcileErr = Join-Path $Logs "message-reconcile-worker.err.log"
 
 $Api = Start-ServiceProcess `
     -Name "API" `
@@ -123,6 +144,20 @@ $Worker = Start-ServiceProcess `
     -OutLog $WorkerOut `
     -ErrLog $WorkerErr
 
+$ReconcileEnabled = $env:WECOM_MESSAGE_RECONCILE_ENABLED
+if (-not $ReconcileEnabled) {
+    $ReconcileEnabled = Get-DotEnvValue "WECOM_MESSAGE_RECONCILE_ENABLED"
+}
+
+$Reconcile = $null
+if ($ReconcileEnabled -and $ReconcileEnabled.ToLowerInvariant() -eq "true") {
+    $Reconcile = Start-ServiceProcess `
+        -Name "Message reconcile worker" `
+        -Arguments @("scripts\run_message_reconcile_worker.py") `
+        -OutLog $ReconcileOut `
+        -ErrLog $ReconcileErr
+}
+
 if ($DryRun) {
     Write-Host "Dry run complete."
     exit 0
@@ -134,9 +169,18 @@ Write-Host ""
 Write-Host "Services started:"
 Write-Host "  API PID:    $($Api.Process.Id)  http://127.0.0.1:$Port"
 Write-Host "  Worker PID: $($Worker.Process.Id)"
+if ($Reconcile) {
+    Write-Host "  Reconcile PID: $($Reconcile.Process.Id)"
+} else {
+    Write-Host "  Reconcile worker: disabled"
+}
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  API stdout:    $($Api.OutLog)"
 Write-Host "  API stderr:    $($Api.ErrLog)"
 Write-Host "  Worker stdout: $($Worker.OutLog)"
 Write-Host "  Worker stderr: $($Worker.ErrLog)"
+if ($Reconcile) {
+    Write-Host "  Reconcile stdout: $($Reconcile.OutLog)"
+    Write-Host "  Reconcile stderr: $($Reconcile.ErrLog)"
+}

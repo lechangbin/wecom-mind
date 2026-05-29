@@ -41,6 +41,17 @@ class Settings(BaseSettings):
     wecom_timeout_seconds: int = 10
     wecom_max_retries: int = 2
     wecom_group_bot_webhook_url: str | None = None
+    wecom_message_reconcile_enabled: bool = False
+    wecom_message_reconcile_chatids: str | None = None
+    wecom_message_reconcile_interval_seconds: int = 10
+    wecom_message_reconcile_lookback_seconds: int = 12
+    wecom_message_reconcile_overlap_seconds: int = 2
+    wecom_message_reconcile_pages: int = 1
+    wecom_message_reconcile_auto_enqueue: bool = True
+    wecom_message_reconcile_auto_send: bool = False
+    wecom_mcp_config_endpoint: str = (
+        "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
+    )
 
     dify_base_url: str | None = None
     dify_api_key: str | None = None
@@ -87,6 +98,16 @@ class Settings(BaseSettings):
     @property
     def effective_intent_aibot_name(self) -> str | None:
         return self.wecom_intent_aibot_name or self.wecom_aibot_name
+
+    @property
+    def message_reconcile_chatid_list(self) -> list[str]:
+        if not self.wecom_message_reconcile_chatids:
+            return []
+        return [
+            item.strip()
+            for item in self.wecom_message_reconcile_chatids.split(",")
+            if item.strip()
+        ]
 
 
 @lru_cache

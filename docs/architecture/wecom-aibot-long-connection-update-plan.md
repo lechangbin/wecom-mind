@@ -167,12 +167,14 @@ AiBot 长连接收到非 @ 群消息
 - 复用测试目录中已验证的 MCP 消息读取思路。
 - 实现 `get_msg_chat_list` / `get_message` 的 Python 适配。
 - 将补漏拉取结果走同一个 `ingest_message()`。
+- 将历史读取返回的 `userid` 作为主动提醒必要字段；缺失时不编造，不进入主动 @ 回复。
 
 验收：
 
 - 指定 `chatid + time_range` 可补拉最近 7 天消息。
 - `next_cursor` 可分页。
 - 重复消息不重复入库。
+- 实机补拉到的用户消息落库后 `messages.userid` 非空。
 
 ### 阶段 6：旧入口收敛
 
@@ -213,9 +215,11 @@ AiBot 长连接收到非 @ 群消息
 | P0 | 长连接 handler 等待 Dify blocking 导致后续 frame 丢失 | handler 只排后台任务并快速返回，Dify 在后台任务执行。 |
 | P0 | @ 回复使用主动 `aibot_send_msg`，未及时响应原始回调 req_id，快速连续 @ 时可能只投递一条 | @ 实时回复改为 `reply_stream` 回调绑定响应；主动推送仅用于无原始 frame 的场景。 |
 | P0 | Dify blocking 期间持有 SQLite 写事务，第二条消息入库失败并停留在占位回复 | Dify 前提交 `trigger_event` 与 `ai_run=running`，外部 I/O 不夹在未提交写事务中。 |
+| P0 | 历史消息读取必须提供 `userid`，否则主动提醒无法合法 @ 用户 | 将 `userid` 作为本分支主动客服必要契约；实机验收必须确认落库非空，不做身份推断兜底。 |
 | P0 | Secret 泄露 | 只写 `.env`，提交前做密钥扫描。 |
 | P1 | 长连接发送和现有 app/webhook sender 语义不同 | 保留 `WeComMessageSender` 接口，新增 sender 模式。 |
 | P1 | Worker 和 FastAPI 生命周期耦合过重 | worker 独立启动，FastAPI 不默认启动长连接。 |
+| P1 | 非 @ 主动提醒无法使用 callback-bound 占位 stream | 主动提醒保持 blocking 一次性发送；只有 @ 实时回复进入后续 Dify streaming。 |
 | P2 | 历史补漏与实时消息重复 | 统一使用 msgid 幂等。 |
 
 ## 第一批实机测试脚本
