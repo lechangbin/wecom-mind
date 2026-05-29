@@ -10,6 +10,9 @@ from app.outbound.schemas import OutboxCreateRequest
 from app.outbound.sender import WeComMessageSender
 
 
+OUT_OF_SCOPE_REPLY_CONTENT = "当前问题不属于我的回答范围，请围绕本群知识库相关问题提问。"
+
+
 def create_outbox_message(
     session: Session,
     payload: OutboxCreateRequest,
@@ -177,7 +180,13 @@ def _reply_source(
 def _reply_payload(ai_run: AiRun) -> dict[str, str] | None:
     output_json = ai_run.output_json if isinstance(ai_run.output_json, dict) else {}
     if ai_run.workflow_code == "group_knowledge_reply":
-        if output_json.get("action") != "reply":
+        action = output_json.get("action")
+        if action == "out_of_scope":
+            return {
+                "reply_type": "markdown",
+                "content": OUT_OF_SCOPE_REPLY_CONTENT,
+            }
+        if action != "reply":
             return None
         content = str(output_json.get("content") or "")
         return {"reply_type": "markdown", "content": content}
@@ -223,28 +232,40 @@ def send_outbox_message(
             "raw_response": {"errmsg": str(exc)},
         }
 
-    raw_response = result.get("raw_response")
-    success = result.get("success")
-    if success is None:
-        success = isinstance(raw_response, dict) and raw_response.get("errcode") == 0
+    _apply_send_result(session, outbox, result)
 
-    outbox.raw_response = raw_response
-    if success:
-        outbox.status = "sent"
-        outbox.external_msgid = result.get("external_msgid") or (
-            raw_response.get("msgid") if isinstance(raw_response, dict) else None
-        )
-        outbox.error_code = None
-        outbox.error_message = None
-        outbox.sent_at = now_utc()
-        _sync_bot_reply_send_status(session, outbox, status="sent")
-    else:
-        outbox.status = "failed"
-        outbox.retry_count += 1
-        outbox.error_code = result.get("error_code") or _raw_error_code(raw_response)
-        outbox.error_message = result.get("error_message") or _raw_error_message(raw_response)
-        _sync_bot_reply_send_status(session, outbox, status="failed")
+    session.flush()
+    return outbox, False
 
+
+async def send_outbox_message_async(
+    session: Session,
+    *,
+    outbox_identifier: str,
+    sender: Any,
+) -> tuple[OutboxMessage, bool]:
+    outbox = get_outbox_message(session, outbox_identifier)
+
+    if outbox.status == "sent":
+        return outbox, True
+
+    if outbox.status == "canceled":
+        return outbox, True
+
+    outbox.status = "sending"
+    session.flush()
+
+    try:
+        result = await sender.send_async(outbox)
+    except Exception as exc:
+        result = {
+            "success": False,
+            "error_code": "SEND_EXCEPTION",
+            "error_message": str(exc),
+            "raw_response": {"errmsg": str(exc)},
+        }
+
+    _apply_send_result(session, outbox, result)
     session.flush()
     return outbox, False
 
@@ -332,6 +353,34 @@ def _sync_bot_reply_send_status(
     if status == "sent":
         reply.external_msgid = outbox.external_msgid
         reply.sent_at = outbox.sent_at
+
+
+def _apply_send_result(
+    session: Session,
+    outbox: OutboxMessage,
+    result: dict[str, Any],
+) -> None:
+    raw_response = result.get("raw_response")
+    success = result.get("success")
+    if success is None:
+        success = isinstance(raw_response, dict) and raw_response.get("errcode") == 0
+
+    outbox.raw_response = raw_response
+    if success:
+        outbox.status = "sent"
+        outbox.external_msgid = result.get("external_msgid") or (
+            raw_response.get("msgid") if isinstance(raw_response, dict) else None
+        )
+        outbox.error_code = None
+        outbox.error_message = None
+        outbox.sent_at = now_utc()
+        _sync_bot_reply_send_status(session, outbox, status="sent")
+    else:
+        outbox.status = "failed"
+        outbox.retry_count += 1
+        outbox.error_code = result.get("error_code") or _raw_error_code(raw_response)
+        outbox.error_message = result.get("error_message") or _raw_error_message(raw_response)
+        _sync_bot_reply_send_status(session, outbox, status="failed")
 
 
 def _raw_error_code(raw_response: Any) -> str | None:

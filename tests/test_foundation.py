@@ -26,6 +26,66 @@ def test_settings_read_environment(monkeypatch):
     assert settings.dify_api_key == "dify-secret"
 
 
+def test_settings_exposes_reply_and_intent_aibot_roles():
+    settings = Settings(
+        wecom_aibot_id="legacy-bot",
+        wecom_aibot_secret="legacy-secret",
+        wecom_reply_aibot_id="reply-bot",
+        wecom_reply_aibot_secret="reply-secret",
+        wecom_reply_aibot_name="回复机器人",
+        wecom_intent_aibot_id="intent-bot",
+        wecom_intent_aibot_secret="intent-secret",
+        wecom_intent_aibot_name="意图机器人",
+        wecom_bot_id="fetch-bot",
+        wecom_bot_secret="fetch-secret",
+    )
+
+    assert settings.effective_reply_aibot_id == "reply-bot"
+    assert settings.effective_reply_aibot_secret == "reply-secret"
+    assert settings.effective_reply_aibot_name == "回复机器人"
+    assert settings.effective_intent_aibot_id == "intent-bot"
+    assert settings.effective_intent_aibot_secret == "intent-secret"
+    assert settings.effective_intent_aibot_name == "意图机器人"
+
+
+def test_settings_keeps_legacy_aibot_fallbacks():
+    settings = Settings(
+        wecom_aibot_id="legacy-bot",
+        wecom_aibot_secret="legacy-secret",
+        wecom_aibot_name="机器人",
+    )
+
+    assert settings.effective_reply_aibot_id == "legacy-bot"
+    assert settings.effective_reply_aibot_secret == "legacy-secret"
+    assert settings.effective_reply_aibot_name == "机器人"
+    assert settings.effective_intent_aibot_id == "legacy-bot"
+    assert settings.effective_intent_aibot_secret == "legacy-secret"
+    assert settings.effective_intent_aibot_name == "机器人"
+
+
+def test_message_reconcile_defaults_are_short_window():
+    settings = Settings(_env_file=None)
+
+    assert settings.wecom_message_reconcile_enabled is False
+    assert settings.wecom_message_reconcile_chatids is None
+    assert settings.message_reconcile_chatid_list == []
+    assert settings.wecom_message_reconcile_interval_seconds == 10
+    assert settings.wecom_message_reconcile_lookback_seconds == 12
+    assert settings.wecom_message_reconcile_overlap_seconds == 2
+    assert settings.wecom_message_reconcile_pages == 1
+    assert settings.wecom_message_reconcile_auto_enqueue is True
+    assert settings.wecom_message_reconcile_auto_send is False
+    assert settings.wecom_mcp_config_endpoint == (
+        "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
+    )
+
+
+def test_message_reconcile_chatid_list_parses_csv():
+    settings = Settings(wecom_message_reconcile_chatids=" CHAT_A,CHAT_B ,, CHAT_C ")
+
+    assert settings.message_reconcile_chatid_list == ["CHAT_A", "CHAT_B", "CHAT_C"]
+
+
 def test_response_helpers_include_request_id():
     assert success_response({"ok": True}, request_id="req-1") == {
         "success": True,

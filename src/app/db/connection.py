@@ -42,13 +42,30 @@ def _ensure_lightweight_schema_upgrades(engine: Engine) -> None:
         return
 
     with engine.begin() as connection:
-        columns = {
+        workflow_columns = {
             row[1] for row in connection.exec_driver_sql("PRAGMA table_info(ai_workflows)")
         }
-        if "dify_webhook_url" not in columns:
+        if "dify_webhook_url" not in workflow_columns:
             connection.exec_driver_sql(
                 "ALTER TABLE ai_workflows ADD COLUMN dify_webhook_url VARCHAR(1024)"
             )
+
+        message_columns = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(messages)")
+        }
+        if "sender_type" not in message_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN sender_type VARCHAR(32) "
+                "NOT NULL DEFAULT 'user'"
+            )
+        if "bot_role" not in message_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN bot_role VARCHAR(32)"
+            )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_messages_chatid_sender_type_create_time "
+            "ON messages (chatid, sender_type, create_time)"
+        )
 
 
 def check_database_connection(engine: Engine) -> bool:

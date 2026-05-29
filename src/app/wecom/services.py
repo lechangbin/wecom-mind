@@ -87,13 +87,15 @@ def ingest_message(
     source = payload.source
     external_msgid = _external_msgid(raw_message)
 
+    duplicate_conditions = [
+        MessageRaw.idempotency_key == payload.idempotency_key,
+        (MessageRaw.source == source) & (MessageRaw.external_msgid == external_msgid),
+    ]
+    if external_msgid and not external_msgid.startswith("payload:"):
+        duplicate_conditions.append(MessageRaw.external_msgid == external_msgid)
+
     existing_raw = session.scalar(
-        select(MessageRaw).where(
-            or_(
-                MessageRaw.idempotency_key == payload.idempotency_key,
-                (MessageRaw.source == source) & (MessageRaw.external_msgid == external_msgid),
-            )
-        )
+        select(MessageRaw).where(or_(*duplicate_conditions)).limit(1)
     )
     if existing_raw:
         existing_message = _message_for_raw(session, existing_raw.id)
@@ -126,6 +128,7 @@ def ingest_message(
     content_text = _extract_content_text(raw_message, msgtype)
     mentioned_users = _extract_mentioned_users(raw_message)
     quote_message = raw_message.get("quote")
+    sender_type, bot_role = _sender_classification(userid, settings)
     message = Message(
         raw_message_id=raw.id,
         external_msgid=external_msgid,
@@ -133,6 +136,8 @@ def ingest_message(
         chattype=_optional_str(raw_message.get("chattype")) or "group",
         userid=userid,
         msgtype=msgtype,
+        sender_type=sender_type,
+        bot_role=bot_role,
         content_text=content_text,
         normalized_content=_normalized_content(msgtype, content_text),
         quote_message=quote_message,
@@ -152,6 +157,25 @@ def ingest_message(
         "message_id": message.id,
         "duplicated": False,
     }
+
+
+def backfill_message_sender_classification(
+    session: Session,
+    settings: Settings,
+) -> dict[str, int]:
+    messages = session.scalars(select(Message)).all()
+    updated_count = 0
+    for message in messages:
+        sender_type, bot_role = _sender_classification(message.userid, settings)
+        if message.sender_type == sender_type and message.bot_role == bot_role:
+            continue
+        message.sender_type = sender_type
+        message.bot_role = bot_role
+        updated_count += 1
+
+    if updated_count:
+        session.commit()
+    return {"updated_count": updated_count}
 
 
 def _build_callback_job(callback: WeComMcpCallback) -> MessageIngestionJob:
@@ -215,17 +239,44 @@ def _message_for_raw(session: Session, raw_message_id: int) -> Message:
 
 
 def _extract_content_text(raw_message: dict[str, Any], msgtype: str) -> str | None:
-    if msgtype != "text":
+    if msgtype not in {"text", "mixed"}:
         return None
     text = raw_message.get("text")
     if isinstance(text, dict):
         value = text.get("content")
         return str(value) if value is not None else ""
-    return str(text) if text is not None else ""
+    if text is not None:
+        return str(text)
+
+    mixed = raw_message.get("mixed")
+    if isinstance(mixed, dict):
+        items = mixed.get("items")
+        if isinstance(items, list):
+            parts = []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                body = item.get("text")
+                if isinstance(body, dict) and body.get("content") is not None:
+                    parts.append(str(body["content"]))
+            return "".join(parts)
+    return ""
+
+
+def _sender_classification(userid: str | None, settings: Settings) -> tuple[str, str | None]:
+    if not userid:
+        return "system", None
+    if userid == settings.effective_reply_aibot_id:
+        return "bot", "reply_bot"
+    if userid == settings.effective_intent_aibot_id:
+        return "bot", "intent_bot"
+    if userid in {settings.wecom_aibot_id, settings.wecom_bot_id}:
+        return "bot", "unknown_bot"
+    return "user", None
 
 
 def _normalized_content(msgtype: str, content_text: str | None) -> dict[str, Any]:
-    if msgtype == "text":
+    if msgtype in {"text", "mixed"}:
         return {"type": "text", "text": content_text or ""}
     return {"type": msgtype}
 
@@ -257,11 +308,11 @@ def _mentioned_bot(
     mentioned_users: list[Any],
     settings: Settings,
 ) -> bool:
-    bot_id = settings.wecom_aibot_id
+    bot_id = settings.effective_reply_aibot_id
     if bot_id and bot_id in {str(user) for user in mentioned_users}:
         return True
 
-    bot_name = settings.wecom_aibot_name
+    bot_name = settings.effective_reply_aibot_name
     if bot_name and content_text and f"@{bot_name}" in content_text:
         return True
 

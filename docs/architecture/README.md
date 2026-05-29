@@ -12,3 +12,8 @@
 当前新版 Dify AI 功能路线展示页：
 
 - [Dify AI 功能重建架构](./dify-ai-architecture.html)
+
+下一阶段开发预案：
+
+- [企微消息补漏与数据库驱动主动意图识别预计划](../superpowers/plans/2026-05-29-wecom-message-reconcile-proactive-intent.md)
+- [企微历史消息补漏与主动提醒调度架构](./wecom-message-reconcile-worker.md)

@@ -1,6 +1,6 @@
 # 基于自建系统 + Dify 的企微机器人
 
-当前已完成阶段 12：消息入库任务处理器 MVP。
+当前分支：企业微信智能机器人长连接实机测试版，基于 `v0.1-dify-ai-baseline` 后续更新。
 
 ## 已实现范围
 
@@ -20,8 +20,8 @@
 
 - ORM 数据表：`wecom_chats`、`wecom_users`、`wecom_mcp_callbacks`、`wecom_mcp_pull_cursors`、`message_ingestion_jobs`、`messages_raw`、`messages`。
 - 应用启动时自动 `create_all` 建表，继续兼容默认 SQLite。
-- `POST /api/wecom/callbacks/mcp`：保存 query/body、生成 `callback_id`、保存幂等键和状态，并为新回调创建待处理入库/拉取任务。
-- 回调接口通过 `WeComCallbackVerifier` 抽象验证来源；默认是 mock verifier，real 模式支持企业微信 URL 验证、签名校验和 AES 解密。
+- 旧 `POST /api/wecom/callbacks/mcp` 仅作为兼容入口保留，不再作为当前主接收链路。
+- 当前主接收链路为企业微信智能机器人长连接 Worker，收到消息后标准化为 `MessageIngestRequest` 并复用入库逻辑。
 - `POST /api/wecom/messages/ingest`：保存 `messages_raw`，生成 `messages` 标准化记录。
 - 文本消息标准化、quote 保存、机器人 @ 识别、群聊和用户基础信息/活跃时间更新。
 - 同一 `idempotency_key` 或同一 `source + external_msgid` 重复入库时返回 `duplicated=true`，不重复写入核心表。
@@ -114,6 +114,7 @@
 - 新增 `WeComApiClient`，支持 `gettoken`、access_token 缓存、提前 5 分钟刷新、token 失效刷新重试、`errcode=-1` 简单重试。
 - `WECOM_SENDER_MODE=app` 时使用 `WeComAppMessageSender`，支持 `/message/send` 应用消息和 `/appchat/send` 应用群聊消息。
 - `WECOM_SENDER_MODE=webhook` 时使用 `WeComWebhookMessageSender`，直接调用群机器人 webhook，不获取 access_token。
+- `WECOM_SENDER_MODE=aibot_ws` 时使用智能机器人长连接发送，建议由 worker 持有同一条长连接执行发送。
 - 真实 sender 统一返回 outbox 发送模块可识别的 `success/external_msgid/raw_response/error_code/error_message` 结构。
 - 发送失败不会丢失 outbox 审计信息，仍由 `send_outbox_message` 标记 `failed` 并保存错误和原始响应。
 
@@ -134,7 +135,32 @@
 - 支持查询 ingestion jobs、手动执行单个 normalize job、批量执行 pending normalize jobs。
 - job 状态支持 `running/succeeded/skipped/failed` 流转，并同步更新 callback 的 `processed/failed` 状态和错误信息。
 
-当前仍不包含真实企微消息拉取 API、真实定时器、Dify streaming、自动业务流水线、复杂权限、统计宽表、后台统计大屏和前端。
+阶段 14 企业微信智能机器人长连接实机链路：
+
+- 新增 `AiBotFrameNormalizer`，将长连接 SDK frame 转成现有 `MessageIngestRequest`。
+- 新增 `process_incoming_aibot_frame()`，完成 `ingest_message -> evaluate_triggers -> Dify -> outbox -> send` 的 @ 消息闭环。
+- 长连接 worker 收到 frame 后快速提交后台任务并返回；入库、Dify blocking 调用和发送在后台任务中执行，避免多个账号连续 @ 时阻塞后续 frame。
+- 新增 `WeComAiBotWsMessageSender`，支持 @ 回调绑定 `reply_stream(frame, stream_id, ...)` 回复，也支持主动 `send_message(chatid, body)` 推送 markdown/template_card。
+- `trigger_event` 与 `ai_run=running` 写入后会先提交事务，再调用 Dify blocking，避免 SQLite 写锁导致后续 @ 消息只显示占位回复。
+- 新增 `WeComAiBotLongConnectionWorker` 和 `scripts/run_wecom_aibot_worker.py`，用于本地启动长连接常驻进程。
+- 支持回复机器人与意图/拉消息机器人分离：`WECOM_REPLY_AIBOT_*` 用于 @ 回复和发送，`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 预留给消息读取和主动提醒采集。
+- 非 @ 消息默认只入库；启用 `MessageReconcileWorker` 后会按短窗口补漏并从数据库触发 `chat_proactive_reminder`，在 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时可自动发送主动客服答复。
+
+阶段 15 历史消息补漏与数据库驱动主动提醒预研实现：
+
+- 新增补漏配置：默认 10 秒扫描周期、12 秒拉取窗口、2 秒 overlap。
+- `messages` 单表增加 `sender_type` 和 `bot_role`，用于区分用户消息、回复机器人消息和意图采集机器人消息，不拆分用户/机器人消息表。
+- 应用启动时会轻量回填已有 `messages` 行的 sender 分类，避免旧 SQLite 数据中机器人消息被默认当成用户消息扫描。
+- 入库幂等增强：真实 `msgid` 会跨 `source` 去重，避免同一条消息先由长连接入库、再由历史补漏入库时重复写入。
+- `src/app/wecom/message_reconcile.py` 提供单次补漏执行能力：计算窗口、调用注入的历史消息源、幂等入库、从数据库窗口触发 `chat_proactive_reminder`、成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
+- 新增 `WeComMcpMessageSource`，通过意图/拉消息机器人获取 msg MCP 配置，并调用 `get_message` 拉取群历史消息。
+- 新增 `MessageReconcileWorker` 和 `scripts/run_message_reconcile_worker.py`，可按 `WECOM_MESSAGE_RECONCILE_CHATIDS` 常驻扫描多个群。
+- `start-services.ps1` 会在 `WECOM_MESSAGE_RECONCILE_ENABLED=true` 时同时启动补漏 worker。
+- 主动提醒扫描改为 SQL 时间窗口查询，只读取 `sender_type=user` 的用户消息。
+- `chat_proactive_reminder` 输入会携带由 `trigger_events` 生成的 `handled_records`，避免重复回答已经由 @ 回复处理过的消息。
+- `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时，补漏 worker 创建 proactive outbox；`WECOM_SENDER_MODE=aibot_ws` 下由长连接 worker 复用同一条回复机器人连接发送并回写 `sent/failed`，其他 sender 模式仍可由补漏 worker 直发。
+
+当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息补漏已具备真实 MCP 消息源适配和常驻 worker，但仍不作为主接收入口。
 
 ## 本地启动
 
@@ -164,8 +190,8 @@ DIFY_CLIENT_MODE=mock
 DIFY_CLIENT_MODE=real
 DIFY_BASE_URL=https://api.dify.ai/v1
 DIFY_API_KEY=your-dify-api-key
-DIFY_TIMEOUT_SECONDS=30
-DIFY_MAX_RETRIES=1
+DIFY_TIMEOUT_SECONDS=120
+DIFY_MAX_RETRIES=0
 DIFY_USER=wecom-bot-system
 ```
 
@@ -218,16 +244,66 @@ WECOM_TIMEOUT_SECONDS=10
 
 webhook 模式不调用 `gettoken`，text 消息会把 `target_userids` 映射为 `mentioned_list`。
 
-3. 启动 API：
+启用企业微信智能机器人长连接实机链路：
+
+```env
+# 兼容兜底字段：未配置分角色机器人时使用。
+WECOM_AIBOT_ID=
+WECOM_AIBOT_SECRET=
+WECOM_AIBOT_NAME=机器人
+
+# @ 回复与发送使用的机器人。
+WECOM_REPLY_AIBOT_ID=your-reply-bot-id
+WECOM_REPLY_AIBOT_SECRET=your-reply-bot-secret
+WECOM_REPLY_AIBOT_NAME=智能机器人
+
+# 非 @ 消息读取、主动提醒采集使用的机器人；需要具备群消息读取权限。
+WECOM_INTENT_AIBOT_ID=your-intent-bot-id
+WECOM_INTENT_AIBOT_SECRET=your-intent-bot-secret
+WECOM_INTENT_AIBOT_NAME=智能机器人
+WECOM_BOT_ID=your-intent-bot-id
+WECOM_BOT_SECRET=your-intent-bot-secret
+
+# 历史消息补漏配置。自动客服实机测试只应先配置测试群。
+WECOM_MESSAGE_RECONCILE_ENABLED=false
+WECOM_MESSAGE_RECONCILE_CHATIDS=
+WECOM_MESSAGE_RECONCILE_INTERVAL_SECONDS=10
+WECOM_MESSAGE_RECONCILE_LOOKBACK_SECONDS=12
+WECOM_MESSAGE_RECONCILE_OVERLAP_SECONDS=2
+WECOM_MESSAGE_RECONCILE_PAGES=1
+WECOM_MESSAGE_RECONCILE_AUTO_ENQUEUE=true
+WECOM_MESSAGE_RECONCILE_AUTO_SEND=false
+WECOM_MCP_CONFIG_ENDPOINT=https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config
+
+WECOM_SENDER_MODE=aibot_ws
+DIFY_CLIENT_MODE=real
+DIFY_BASE_URL=https://api.dify.ai/v1
+DIFY_GROUP_KNOWLEDGE_REPLY_API_KEY=your-group-reply-key
+DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-proactive-key
+```
+
+自动客服实机测试阶段可在本地 `.env` 将 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true`，但示例配置保持 `false` 作为安全默认。`aibot_ws` 自动发送必须同时启动长连接 worker，因为主动回复由它复用回复机器人 WebSocket 连接派发。
+
+Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。长连接 @ 回复和主动发送使用 `WECOM_REPLY_AIBOT_*`；历史消息补漏和主动提醒采集使用 `WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*`。
+
+3. 一键启动 API 和智能机器人长连接 worker：
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --reload
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1
 ```
+
+默认 API 地址为 `http://127.0.0.1:8010`，日志写入 `logs/`。如需改端口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1 -Port 8000
+```
+
+实机链路为：测试群发消息 -> worker 收到 @ frame 后先发 callback-bound stream 占位 -> 入库 -> 触发 Dify -> 创建 outbox -> 用同一 stream 发送最终回复。
 
 4. 检查健康接口：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
+Invoke-RestMethod http://127.0.0.1:8010/health
 ```
 
 ## 接口示例
@@ -553,4 +629,4 @@ tests/
 
 ## 下一阶段怎么继续
 
-下一阶段建议进入真实企微消息拉取 puller、真实调度器、课程展示前端或 Dify streaming，在已有查询接口、消息、触发、ai_runs、outbox、会话段、用户画像、主动意图、真实 Dify blocking、真实企微出站发送适配、真实企微回调验签解密和 normalize 入库任务处理器基础上继续扩展。继续前只读取该阶段需要的文档；复杂权限和统计宽表仍建议留到后续阶段。
+下一阶段建议进入真实企微历史消息读取适配、常驻补漏 worker、课程展示前端或 Dify streaming，在已有查询接口、消息、触发、ai_runs、outbox、会话段、用户画像、主动意图、真实 Dify blocking、真实企微出站发送适配、真实企微回调验签解密、normalize 入库任务处理器和单次消息补漏模块基础上继续扩展。继续前只读取该阶段需要的文档；复杂权限和统计宽表仍建议留到后续阶段。

@@ -48,6 +48,7 @@ def run_dify_workflow_for_trigger(
     )
     session.add(run)
     session.flush()
+    session.commit()
 
     started = perf_counter()
     try:
@@ -65,6 +66,7 @@ def run_dify_workflow_for_trigger(
     finally:
         run.latency_ms = int((perf_counter() - started) * 1000)
         run.finished_at = now_utc()
+        session.commit()
 
     return run
 

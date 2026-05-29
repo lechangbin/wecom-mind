@@ -9,6 +9,7 @@ from app.api.ai_runs import router as ai_runs_router
 from app.api.health import router as health_router
 from app.api.outbox import router as outbox_router
 from app.api.proactive_replies import router as proactive_replies_router
+from app.api.scheduled_intents import router as scheduled_intents_router
 from app.api.triggers import router as triggers_router
 from app.api.wecom import router as wecom_router
 from app.config.settings import Settings, get_settings
@@ -27,6 +28,7 @@ from app.db.defaults import initialize_default_records
 from app.db.session import build_session_factory
 from app.dify.client import build_dify_client
 from app.outbound.sender import build_wecom_message_sender
+from app.wecom.services import backfill_message_sender_classification
 from app.wecom.verifier import build_wecom_callback_verifier
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     initialize_database(app.state.engine)
     app.state.SessionLocal = build_session_factory(app.state.engine)
     initialize_default_records(app.state.SessionLocal)
+    with app.state.SessionLocal() as session:
+        backfill_message_sender_classification(session, settings)
     app.state.wecom_callback_verifier = build_wecom_callback_verifier(settings)
     app.state.dify_client = build_dify_client(settings)
     app.state.wecom_message_sender = build_wecom_message_sender(settings)
@@ -54,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ai_runs_router)
     app.include_router(outbox_router)
     app.include_router(proactive_replies_router)
+    app.include_router(scheduled_intents_router)
     app.include_router(admin_analytics_router)
 
     return app

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.core.schema_validator import JsonSchemaValidationError, validate_json_schema
-from app.db.models import AiRun, Message, now_utc
+from app.db.models import AiRun, Message, TriggerEvent, now_utc
 from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow
 from app.outbound.schemas import OutboxCreateRequest
@@ -44,7 +44,7 @@ def run_proactive_reply(
         workflow_code="chat_proactive_reminder",
         version="v1",
     )
-    input_json = build_chat_proactive_reminder_input(messages=messages)
+    input_json = build_chat_proactive_reminder_input(session=session, messages=messages)
     validate_json_schema(input_json, workflow.input_schema)
 
     ai_run = AiRun(
@@ -97,7 +97,11 @@ def run_proactive_reply(
     }
 
 
-def build_chat_proactive_reminder_input(*, messages: list[Message]) -> dict[str, Any]:
+def build_chat_proactive_reminder_input(
+    *,
+    session: Session,
+    messages: list[Message],
+) -> dict[str, Any]:
     members = []
     seen_userids = set()
     message_items = []
@@ -131,9 +135,42 @@ def build_chat_proactive_reminder_input(*, messages: list[Message]) -> dict[str,
             "message": trigger_message,
             "messages": message_items,
             "members": members,
-            "handled_records": [],
+            "handled_records": _handled_records_for_messages(session, messages),
         }
     }
+
+
+def _handled_records_for_messages(
+    session: Session,
+    messages: list[Message],
+) -> list[dict[str, str]]:
+    if not messages:
+        return []
+
+    by_id = {message.id: message for message in messages}
+    events = session.scalars(
+        select(TriggerEvent)
+        .where(
+            TriggerEvent.message_id.in_(by_id.keys()),
+            TriggerEvent.status.in_(["handled", "sent", "success"]),
+        )
+        .order_by(TriggerEvent.created_at.asc(), TriggerEvent.id.asc())
+    ).all()
+
+    records = []
+    for event in events:
+        message = by_id.get(event.message_id)
+        if not message:
+            continue
+        records.append(
+            {
+                "msgid": message.external_msgid,
+                "message_id": str(message.id),
+                "handler": event.workflow_code,
+                "reason": "mention_already_handled",
+            }
+        )
+    return records
 
 
 def _messages_in_window(
@@ -142,14 +179,18 @@ def _messages_in_window(
     start_time: datetime,
     end_time: datetime,
 ) -> list[Message]:
-    candidates = session.scalars(
-        select(Message).where(Message.chatid == chatid).order_by(Message.create_time.asc())
+    start_utc = _to_utc(start_time)
+    end_utc = _to_utc(end_time)
+    return session.scalars(
+        select(Message)
+        .where(
+            Message.chatid == chatid,
+            Message.create_time >= start_utc,
+            Message.create_time <= end_utc,
+            Message.sender_type == "user",
+        )
+        .order_by(Message.create_time.asc(), Message.id.asc())
     ).all()
-    return [
-        message
-        for message in candidates
-        if start_time <= _to_utc(message.create_time) <= end_time
-    ]
 
 
 def _validate_proactive_output(output_json: dict[str, Any], input_json: dict[str, Any]) -> None:
