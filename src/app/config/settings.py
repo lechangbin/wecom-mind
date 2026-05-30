@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     wecom_message_reconcile_pages: int = 1
     wecom_message_reconcile_auto_enqueue: bool = True
     wecom_message_reconcile_auto_send: bool = False
+    wecom_message_identity_bucket_seconds: int = 5
+    wecom_mention_request_stalled_after_seconds: int = 180
     wecom_mcp_config_endpoint: str = (
         "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
     )

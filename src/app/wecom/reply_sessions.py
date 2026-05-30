@@ -15,15 +15,23 @@ def record_reply_session_placeholder(
     *,
     frame: dict[str, Any],
     stream_id: str,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
     identity = _frame_identity(frame)
     if not identity["chatid"]:
         return None
 
-    existing = _find_session_by_identity(session, identity)
+    existing = _find_session_by_identity(
+        session,
+        identity,
+        mention_request_id=mention_request_id,
+    )
     if existing:
+        if not _can_reuse_session(existing, mention_request_id=mention_request_id):
+            return None
         existing.frame_json = frame
         existing.stream_id = stream_id
+        existing.mention_request_id = mention_request_id or existing.mention_request_id
         existing.placeholder_status = "sent"
         existing.final_status = "pending"
         existing.updated_at = now_utc()
@@ -34,6 +42,7 @@ def record_reply_session_placeholder(
         session_id=_new_session_id(),
         chatid=identity["chatid"],
         userid=identity["userid"],
+        mention_request_id=mention_request_id,
         source_msgid=identity["source_msgid"],
         req_id=identity["req_id"],
         content_fingerprint=identity["content_fingerprint"],
@@ -54,11 +63,23 @@ def attach_reply_session_to_message_outbox(
     message: Message,
     trigger_event_id: int | None,
     outbox_id: str,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
-    reply_session = find_reply_session_for_message(session, message)
+    reply_session = find_reply_session_for_message(
+        session,
+        message,
+        mention_request_id=mention_request_id,
+    )
     if reply_session is None:
         return None
+    if not _can_bind_outbox(
+        reply_session,
+        outbox_id=outbox_id,
+        mention_request_id=mention_request_id,
+    ):
+        return None
     reply_session.message_id = message.id
+    reply_session.mention_request_id = mention_request_id or reply_session.mention_request_id
     reply_session.trigger_event_id = trigger_event_id
     reply_session.outbox_id = outbox_id
     reply_session.updated_at = now_utc()
@@ -72,11 +93,23 @@ def attach_reply_session_to_frame_outbox(
     frame: dict[str, Any],
     trigger_event_id: int | None,
     outbox_id: str,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
     identity = _frame_identity(frame)
-    reply_session = _find_session_by_identity(session, identity)
+    reply_session = _find_session_by_identity(
+        session,
+        identity,
+        mention_request_id=mention_request_id,
+    )
     if reply_session is None:
         return None
+    if not _can_bind_outbox(
+        reply_session,
+        outbox_id=outbox_id,
+        mention_request_id=mention_request_id,
+    ):
+        return None
+    reply_session.mention_request_id = mention_request_id or reply_session.mention_request_id
     reply_session.trigger_event_id = trigger_event_id
     reply_session.outbox_id = outbox_id
     reply_session.updated_at = now_utc()
@@ -87,6 +120,8 @@ def attach_reply_session_to_frame_outbox(
 def find_reply_session_for_message(
     session: Session,
     message: Message,
+    *,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
     if message.external_msgid:
         exact = session.scalar(
@@ -94,7 +129,7 @@ def find_reply_session_for_message(
             .where(WeComReplySession.source_msgid == message.external_msgid)
             .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
         )
-        if exact:
+        if exact and _can_reuse_session(exact, mention_request_id=mention_request_id):
             return exact
 
     fingerprint = content_fingerprint(message.content_text or "")
@@ -111,7 +146,10 @@ def find_reply_session_for_message(
         )
         .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
     )
-    if by_fingerprint:
+    if by_fingerprint and _can_reuse_session(
+        by_fingerprint,
+        mention_request_id=mention_request_id,
+    ):
         return by_fingerprint
 
     return _find_session_by_canonical_content(
@@ -119,6 +157,7 @@ def find_reply_session_for_message(
         chatid=message.chatid,
         userid=message.userid,
         canonical=canonical_content(message.content_text or ""),
+        mention_request_id=mention_request_id,
     )
 
 
@@ -157,6 +196,8 @@ def canonical_content(content: str) -> str:
 def _find_session_by_identity(
     session: Session,
     identity: dict[str, str | None],
+    *,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
     if identity["source_msgid"]:
         by_msgid = session.scalar(
@@ -164,7 +205,10 @@ def _find_session_by_identity(
             .where(WeComReplySession.source_msgid == identity["source_msgid"])
             .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
         )
-        if by_msgid:
+        if by_msgid and _can_reuse_session(
+            by_msgid,
+            mention_request_id=mention_request_id,
+        ):
             return by_msgid
 
     if identity["req_id"]:
@@ -173,7 +217,10 @@ def _find_session_by_identity(
             .where(WeComReplySession.req_id == identity["req_id"])
             .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
         )
-        if by_req:
+        if by_req and _can_reuse_session(
+            by_req,
+            mention_request_id=mention_request_id,
+        ):
             return by_req
 
     fingerprint = identity["content_fingerprint"]
@@ -190,7 +237,10 @@ def _find_session_by_identity(
         )
         .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
     )
-    if by_fingerprint:
+    if by_fingerprint and _can_reuse_session(
+        by_fingerprint,
+        mention_request_id=mention_request_id,
+    ):
         return by_fingerprint
 
     return _find_session_by_canonical_content(
@@ -198,6 +248,7 @@ def _find_session_by_identity(
         chatid=identity["chatid"],
         userid=identity["userid"],
         canonical=identity["canonical_content"],
+        mention_request_id=mention_request_id,
     )
 
 
@@ -207,6 +258,7 @@ def _find_session_by_canonical_content(
     chatid: str | None,
     userid: str | None,
     canonical: str | None,
+    mention_request_id: int | None = None,
 ) -> WeComReplySession | None:
     if not chatid or not canonical:
         return None
@@ -221,9 +273,52 @@ def _find_session_by_canonical_content(
         .order_by(WeComReplySession.created_at.desc(), WeComReplySession.id.desc())
     ).all()
     for reply_session in candidates:
-        if _session_canonical_content(reply_session) == canonical:
+        if (
+            _session_canonical_content(reply_session) == canonical
+            and _can_reuse_session(
+                reply_session,
+                mention_request_id=mention_request_id,
+            )
+        ):
             return reply_session
     return None
+
+
+def _can_reuse_session(
+    reply_session: WeComReplySession,
+    *,
+    mention_request_id: int | None,
+) -> bool:
+    if reply_session.final_status == "sent":
+        return False
+    if reply_session.outbox_id:
+        return False
+    if (
+        mention_request_id is not None
+        and reply_session.mention_request_id is not None
+        and reply_session.mention_request_id != mention_request_id
+    ):
+        return False
+    return True
+
+
+def _can_bind_outbox(
+    reply_session: WeComReplySession,
+    *,
+    outbox_id: str,
+    mention_request_id: int | None,
+) -> bool:
+    if reply_session.final_status == "sent":
+        return False
+    if reply_session.outbox_id and reply_session.outbox_id != outbox_id:
+        return False
+    if (
+        mention_request_id is not None
+        and reply_session.mention_request_id is not None
+        and reply_session.mention_request_id != mention_request_id
+    ):
+        return False
+    return True
 
 
 def _frame_identity(frame: dict[str, Any]) -> dict[str, str | None]:

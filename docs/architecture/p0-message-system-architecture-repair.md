@@ -65,13 +65,14 @@ Interface 需要表达：
 
 长连接 worker 和补漏 worker 都必须先经过该 Interface。它不应只依赖 `message_id`，而要使用业务请求身份。
 
-最小身份规则：
+当前 P0 最小身份规则：
 
 ```text
-priority 1: 真实 msgid
-priority 2: req_id
-priority 3: chatid + userid + canonical_content + create_time bucket
+business_identity_key = chatid + userid + canonical_content + create_time bucket
+默认 bucket = 5 秒
 ```
+
+真实 `msgid` 仍用于同 source/idempotency 去重；跨 source 记录不再直接吞掉，而是保留两条 `messages` 并通过 `business_identity_key/canonical_message_id` 关联到同一业务消息。
 
 验收：
 
@@ -94,7 +95,7 @@ priority 3: chatid + userid + canonical_content + create_time bucket
 
 验收：
 
-- 有相同真实 `msgid` 时跨 source 不重复入库。
+- 有相同真实 `msgid` 或缺失真实 `msgid` 时，跨 source 记录保留并关联到同一业务身份。
 - 没有真实 `msgid` 但同用户同内容短时间邻近时，不重复触发 @。
 - 两条用户快速发送的不同问题不能误合并。
 
@@ -132,7 +133,7 @@ stalled
 
 - `ai_run=running` 时，补漏跳过。
 - `outbox=pending/sending/sent` 时，补漏跳过。
-- `failed/stalled` 只有达到恢复阈值后才允许 recovery。
+- `failed/stalled` 当前阶段只记录和阻断重复处理，不自动 recovery，避免重复回复和串占位。
 
 ### 4. Reply Session Lifecycle Module
 
@@ -197,8 +198,8 @@ stalled
 长连接收到 @ 后：
 
 ```text
-begin placeholder
 claim mention request
+begin placeholder
 bind reply session
 ingest message
 create ai execution
@@ -208,7 +209,7 @@ final send
 complete mention request
 ```
 
-如果 claim 返回 `already_processing/completed`，实时链路不再重复 Dify。
+如果 claim 返回 `already_processing/completed/failed/stalled`，实时链路不再重复 Dify。
 
 ### Phase 3：接入补漏恢复链路
 
@@ -218,7 +219,7 @@ complete mention request
 resolve message identity
 claim or inspect mention request
 if running/completed: skip
-if recoverable: run group_knowledge_reply
+if unclaimed: run group_knowledge_reply
 if session reusable: final stream
 else: normal send
 ```

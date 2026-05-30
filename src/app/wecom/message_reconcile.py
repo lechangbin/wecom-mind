@@ -14,6 +14,12 @@ from app.outbound.services import send_outbox_message
 from app.proactive_replies.schemas import ProactiveReplyRunRequest
 from app.proactive_replies.services import run_proactive_reply
 from app.wecom.mention_recovery import run_mention_recovery
+from app.wecom.mention_requests import (
+    find_by_outbox_id,
+    mark_completed,
+    mark_failed,
+    mark_sending,
+)
 from app.wecom.schemas import MessageIngestRequest
 from app.wecom.services import ingest_message
 
@@ -96,6 +102,7 @@ def run_message_reconcile_once(
         start_time=start_time,
         end_time=end_time,
         dify_client=dify_client,
+        settings=settings,
         auto_enqueue=auto_enqueue,
     )
     mention_recovery_status = str(mention_recovery_result["status"])
@@ -112,11 +119,31 @@ def run_message_reconcile_once(
             outbox_id = outbox_info.get("outbox_id")
             if not outbox_id:
                 continue
+            mention_request = find_by_outbox_id(session, str(outbox_id))
+            if mention_request is not None:
+                if mention_request.status == "completed":
+                    continue
+                if (
+                    mention_request.outbox_id
+                    and mention_request.outbox_id != str(outbox_id)
+                ):
+                    continue
+                if mention_request.status == "running":
+                    continue
+                mark_sending(session, mention_request)
             _outbox, duplicated = send_outbox_message(
                 session,
                 outbox_identifier=str(outbox_id),
                 sender=sender,
             )
+            if _outbox.status == "sent":
+                mark_completed(session, mention_request)
+            elif _outbox.status == "failed":
+                mark_failed(
+                    session,
+                    mention_request,
+                    error_message=_outbox.error_message,
+                )
             if not duplicated and _outbox.status == "sent":
                 mention_recovery_sent_outbox_count += 1
         session.commit()

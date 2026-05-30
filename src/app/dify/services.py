@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.core.schema_validator import JsonSchemaValidationError, validate_json_schema
-from app.db.models import AiRun, AiWorkflow, Message, TriggerEvent, now_utc
+from app.db.models import AiRun, AiWorkflow, MentionRequest, Message, TriggerEvent, now_utc
 from app.dify.client import DifyClient
+from app.wecom.mention_requests import mark_failed, mark_running, mark_succeeded
 
 
 def run_dify_workflow_for_trigger(
@@ -18,6 +19,7 @@ def run_dify_workflow_for_trigger(
     message: Message,
     workflow: AiWorkflow,
     dify_client: DifyClient,
+    mention_request: MentionRequest | None = None,
 ) -> AiRun:
     existing = session.scalar(
         select(AiRun).where(
@@ -27,6 +29,23 @@ def run_dify_workflow_for_trigger(
         )
     )
     if existing:
+        if mention_request is not None:
+            if existing.status == "success":
+                mark_succeeded(session, mention_request, ai_run_id=existing.id)
+            elif existing.status in {"running", "pending"}:
+                mark_running(
+                    session,
+                    mention_request,
+                    trigger_event_id=trigger_event.id,
+                    ai_run_id=existing.id,
+                )
+            elif existing.status in {"failed", "invalid_output"}:
+                mark_failed(
+                    session,
+                    mention_request,
+                    error_message=existing.error_message,
+                )
+            session.commit()
         return existing
 
     input_json = build_trigger_workflow_input(
@@ -48,6 +67,12 @@ def run_dify_workflow_for_trigger(
     )
     session.add(run)
     session.flush()
+    mark_running(
+        session,
+        mention_request,
+        trigger_event_id=trigger_event.id,
+        ai_run_id=run.id,
+    )
     session.commit()
 
     started = perf_counter()
@@ -57,12 +82,15 @@ def run_dify_workflow_for_trigger(
         validate_json_schema(output_json, workflow.output_schema)
         run.status = "success"
         run.error_message = None
+        mark_succeeded(session, mention_request, ai_run_id=run.id)
     except JsonSchemaValidationError as exc:
         run.status = "invalid_output"
         run.error_message = exc.message
+        mark_failed(session, mention_request, error_message=exc.message)
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)
+        mark_failed(session, mention_request, error_message=str(exc))
     finally:
         run.latency_ms = int((perf_counter() - started) * 1000)
         run.finished_at = now_utc()

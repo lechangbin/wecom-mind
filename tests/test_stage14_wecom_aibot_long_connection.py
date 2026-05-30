@@ -7,7 +7,13 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy import func, select
 
 from app.config.settings import Settings
-from app.db.models import Message, MessageRaw, OutboxMessage, WeComReplySession
+from app.db.models import (
+    MentionRequest,
+    Message,
+    MessageRaw,
+    OutboxMessage,
+    WeComReplySession,
+)
 from app.main import create_app
 from app.outbound.sender import WeComAiBotWsMessageSender
 from app.wecom.aibot import (
@@ -15,6 +21,7 @@ from app.wecom.aibot import (
     WeComAiBotLongConnectionWorker,
     process_incoming_aibot_frame,
 )
+from app.wecom.message_reconcile import run_message_reconcile_once
 
 
 class GroupKnowledgeReplyDifyClient:
@@ -102,6 +109,14 @@ class FakeWsClient:
 
     async def disconnect(self):
         self.disconnected = True
+
+
+class StaticHistoryMessageSource:
+    def __init__(self, messages):
+        self.messages = messages
+
+    def fetch_messages(self, *, chatid, start_time, end_time):
+        return self.messages
 
 
 def make_app(tmp_path, *, dify_client=None):
@@ -787,3 +802,79 @@ def test_aibot_worker_does_not_hold_sqlite_write_lock_while_dify_runs(tmp_path):
     assert len(sender.finished) == 2
     assert scalar_count(app, MessageRaw) == 2
     assert scalar_count(app, OutboxMessage) == 2
+
+
+def test_reconcile_skips_same_mention_while_long_connection_request_is_running(tmp_path):
+    dify_client = SlowGroupKnowledgeReplyDifyClient(delay_seconds=0.4)
+    sender = CallbackRecordingSender()
+    ws_client = FakeWsClient()
+    app = make_app(tmp_path, dify_client=dify_client)
+    worker = WeComAiBotLongConnectionWorker(
+        settings=app.state.settings,
+        session_factory=app.state.SessionLocal,
+        dify_client=dify_client,
+        sender=sender,
+        ws_client_factory=lambda _settings: ws_client,
+    )
+
+    async def run_overlap():
+        await worker.start()
+        try:
+            await ws_client.handlers["message.text"](
+                text_frame(
+                    msgid="MSG_RUNNING_WS",
+                    content="@机器人 查一下审批要求。",
+                )
+            )
+            await wait_until(lambda: scalar_count(app, MentionRequest) == 1)
+            await wait_until(
+                lambda: _mention_request_status(app) == "running",
+                timeout=1.0,
+            )
+            with app.state.SessionLocal() as session:
+                result = run_message_reconcile_once(
+                    session,
+                    chatid="CHAT_WS",
+                    settings=app.state.settings,
+                    message_source=StaticHistoryMessageSource(
+                        [
+                            {
+                                "msgid": "",
+                                "chatid": "CHAT_WS",
+                                "chattype": "group",
+                                "from": {"userid": "USER_A", "name": "Alice"},
+                                "msgtype": "text",
+                                "text": {"content": "@机器人查一下审批要求。"},
+                                "mentioned_users": [],
+                                "create_time": 1777827602,
+                            }
+                        ]
+                    ),
+                    dify_client=dify_client,
+                    auto_enqueue=True,
+                    now=datetime.fromtimestamp(1777827610, tz=timezone.utc),
+                )
+            await wait_until(lambda: len(sender.finished) == 1)
+            return result
+        finally:
+            await worker.stop()
+
+    result = asyncio.run(run_overlap())
+
+    assert result["mention_recovery_count"] == 0
+    assert result["mention_recovery_outbox_count"] == 0
+    assert len(dify_client.calls) == 1
+    with app.state.SessionLocal() as session:
+        requests = session.scalars(select(MentionRequest)).all()
+        messages = session.scalars(select(Message).order_by(Message.id)).all()
+
+        assert len(requests) == 1
+        assert requests[0].status == "completed"
+        assert len(messages) == 2
+        assert messages[1].canonical_message_id == messages[0].id
+
+
+def _mention_request_status(app) -> str | None:
+    with app.state.SessionLocal() as session:
+        request = session.scalar(select(MentionRequest))
+        return request.status if request else None

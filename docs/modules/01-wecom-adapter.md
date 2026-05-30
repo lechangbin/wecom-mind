@@ -94,6 +94,8 @@
 - `wecom_mcp_pull_cursors`
 - `message_ingestion_jobs`
 - `messages_raw`
+- `mention_requests`
+- `wecom_reply_sessions`
 - `outbox_messages`
 
 ## 5. MVP 实现范围
@@ -108,7 +110,8 @@
 - 文本和 mixed 消息入库。
 - 消息入库时在单表 `messages` 内标记 `sender_type` 和 `bot_role`，不拆分用户消息表和机器人消息表。
 - 应用启动时回填已有消息的 `sender_type` / `bot_role`，避免旧数据中的机器人消息被主动提醒误扫。
-- 真实 `msgid` 跨 `source` 幂等，避免长连接和历史补漏重复写同一条消息。
+- 长连接和历史补漏的跨来源消息保留各自入库记录，并通过 `business_identity_key/canonical_message_id` 关联到同一业务消息。
+- @ 请求进入 Dify 前必须先写入或检查 `mention_requests`，避免补漏抢占正在运行的长连接请求。
 - @ 消息自动触发 Dify。
 - outbox 通过长连接发送。
 - 历史补漏常驻 worker：短窗口拉取、幂等入库、@ 补漏恢复、数据库驱动主动提醒扫描、cursor 更新、可选自动发送。
@@ -118,7 +121,7 @@
 - 真实测试群 @ 机器人可以收到回复。
 - 非 @ 消息在长连接入口不会即时回复；启用补漏 worker 和 `AUTO_SEND=true` 后，可在短窗口扫描后自动主动答复。
 - 补漏拉到未完成的 @ 消息时，应进入 `mention_recovery -> group_knowledge_reply`，而不是被 `chat_proactive_reminder` 抢答。
-- 重复 msgid 不会重复入库和发送。
+- 同 source 重复消息不会重复入库；跨 source 同业务消息会保留并关联，但不会重复触发回复。
 
 可延后：
 

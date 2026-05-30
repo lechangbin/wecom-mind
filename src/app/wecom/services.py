@@ -19,6 +19,7 @@ from app.db.models import (
     now_utc,
 )
 from app.wecom.schemas import MessageIngestRequest
+from app.wecom.message_identity import assign_message_identity
 
 
 def record_mcp_callback(
@@ -91,18 +92,27 @@ def ingest_message(
         MessageRaw.idempotency_key == payload.idempotency_key,
         (MessageRaw.source == source) & (MessageRaw.external_msgid == external_msgid),
     ]
-    if external_msgid and not external_msgid.startswith("payload:"):
-        duplicate_conditions.append(MessageRaw.external_msgid == external_msgid)
 
     existing_raw = session.scalar(
         select(MessageRaw).where(or_(*duplicate_conditions)).limit(1)
     )
     if existing_raw:
         existing_message = _message_for_raw(session, existing_raw.id)
+        business_identity_key, canonical_message_id, business_duplicated = (
+            assign_message_identity(
+                session,
+                existing_message,
+                bucket_seconds=settings.wecom_message_identity_bucket_seconds,
+            )
+        )
+        session.commit()
         return {
             "raw_message_id": existing_raw.id,
             "message_id": existing_message.id,
             "duplicated": True,
+            "business_identity_key": business_identity_key,
+            "canonical_message_id": canonical_message_id,
+            "business_duplicated": business_duplicated,
         }
 
     chatid = _required_str(raw_message.get("chatid"), "raw_message.chatid")
@@ -150,12 +160,20 @@ def ingest_message(
     _upsert_chat(session, raw_message, chatid, source, create_time)
     _upsert_user(session, from_user, userid, create_time)
     session.flush()
+    business_identity_key, canonical_message_id, business_duplicated = assign_message_identity(
+        session,
+        message,
+        bucket_seconds=settings.wecom_message_identity_bucket_seconds,
+    )
     session.commit()
 
     return {
         "raw_message_id": raw.id,
         "message_id": message.id,
         "duplicated": False,
+        "business_identity_key": business_identity_key,
+        "canonical_message_id": canonical_message_id,
+        "business_duplicated": business_duplicated,
     }
 
 

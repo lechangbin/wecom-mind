@@ -151,9 +151,10 @@
 - 新增补漏配置：默认 10 秒扫描周期、12 秒拉取窗口、2 秒 overlap。
 - `messages` 单表增加 `sender_type` 和 `bot_role`，用于区分用户消息、回复机器人消息和意图采集机器人消息，不拆分用户/机器人消息表。
 - 应用启动时会轻量回填已有 `messages` 行的 sender 分类，避免旧 SQLite 数据中机器人消息被默认当成用户消息扫描。
-- 入库幂等增强：真实 `msgid` 会跨 `source` 去重，避免同一条消息先由长连接入库、再由历史补漏入库时重复写入。
+- 入库幂等增强：同 source 重复幂等键不重复写入；跨 source 同业务消息会保留各自记录，并通过 `business_identity_key/canonical_message_id` 关联，避免后续重复触发回复。
 - `src/app/wecom/message_reconcile.py` 提供单次补漏执行能力：计算窗口、调用注入的历史消息源、幂等入库、先执行 @ 补漏恢复，再从数据库窗口触发 `chat_proactive_reminder`，成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
 - 新增 `mention_recovery`：补漏拉到未完成的 @ 消息时，复用 `group_knowledge_reply` 并创建 `scene=reply_recovery` outbox，不再让主动提醒工作流代答 @ 问题。
+- 新增 `mention_requests`：@ 请求以业务身份唯一认领，长连接和补漏看到同一条 @ 时只允许一个链路进入 Dify；`running` 超过阈值只标记 `stalled` 并记录日志，不自动重跑。
 - 新增 `wecom_reply_sessions`：长连接发出 callback-bound 占位后持久化 `frame_json + stream_id`，补漏恢复匹配成功时可复用原占位 stream 发最终回复。
 - 新增 `WeComMcpMessageSource`，通过意图/拉消息机器人获取 msg MCP 配置，并调用 `get_message` 拉取群历史消息。
 - 新增 `MessageReconcileWorker` 和 `scripts/run_message_reconcile_worker.py`，可按 `WECOM_MESSAGE_RECONCILE_CHATIDS` 常驻扫描多个群。

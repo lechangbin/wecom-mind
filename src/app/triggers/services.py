@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.db.defaults import initialize_default_records
-from app.db.models import AiRun, Message, TriggerEvent, TriggerRule
+from app.db.models import AiRun, MentionRequest, Message, TriggerEvent, TriggerRule
 from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow, run_dify_workflow_for_trigger
 from app.outbound.services import create_reply_outbox_for_ai_run
 from app.triggers.schemas import TriggerEvaluateRequest
+from app.wecom.mention_requests import mark_outbox_pending
 
 
 def evaluate_triggers(
@@ -17,6 +18,7 @@ def evaluate_triggers(
     *,
     payload: TriggerEvaluateRequest,
     dify_client: DifyClient,
+    mention_request_id: int | None = None,
 ) -> dict[str, Any]:
     message_id = payload.resolved_message_id()
     if message_id is None:
@@ -38,6 +40,11 @@ def evaluate_triggers(
         .order_by(TriggerRule.priority.desc(), TriggerRule.id.asc())
     ).all()
 
+    mention_request = (
+        session.get(MentionRequest, mention_request_id)
+        if mention_request_id is not None
+        else None
+    )
     events = []
     for rule in rules:
         event, duplicated = _get_or_create_trigger_event(session, rule, message)
@@ -49,8 +56,15 @@ def evaluate_triggers(
             message=message,
             workflow=workflow,
             dify_client=dify_client,
+            mention_request=mention_request,
         )
         outbox_result = create_reply_outbox_for_ai_run(session, ai_run)
+        if outbox_result:
+            mark_outbox_pending(
+                session,
+                mention_request,
+                outbox_id=str(outbox_result["outbox_id"]),
+            )
         event.status = "handled"
         session.commit()
         events.append(

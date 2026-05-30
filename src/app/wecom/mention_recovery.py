@@ -8,6 +8,8 @@ from app.db.models import AiRun, Message, OutboxMessage, TriggerEvent, TriggerRu
 from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow, run_dify_workflow_for_trigger
 from app.outbound.services import create_reply_outbox_for_ai_run, outbox_to_dict
+from app.config.settings import Settings
+from app.wecom.mention_requests import claim_for_message, mark_outbox_pending
 from app.wecom.reply_sessions import attach_reply_session_to_message_outbox
 
 
@@ -18,6 +20,7 @@ def run_mention_recovery(
     start_time: datetime,
     end_time: datetime,
     dify_client: DifyClient,
+    settings: Settings,
     auto_enqueue: bool = True,
 ) -> dict[str, Any]:
     messages = _unreplied_mention_messages(session, chatid, start_time, end_time)
@@ -40,6 +43,14 @@ def run_mention_recovery(
     outboxes: list[dict[str, Any]] = []
     recovered_count = 0
     for message in messages:
+        claim = claim_for_message(
+            session,
+            message=message,
+            settings=settings,
+            owner="reconcile",
+        )
+        if not claim.should_process or claim.request is None:
+            continue
         event, _duplicated = _get_or_create_recovery_event(session, rule, message)
         ai_run = run_dify_workflow_for_trigger(
             session,
@@ -47,11 +58,17 @@ def run_mention_recovery(
             message=message,
             workflow=workflow,
             dify_client=dify_client,
+            mention_request=claim.request,
         )
         outbox_result = None
         if auto_enqueue:
             outbox_result = create_reply_outbox_for_ai_run(session, ai_run)
             if outbox_result:
+                mark_outbox_pending(
+                    session,
+                    claim.request,
+                    outbox_id=str(outbox_result["outbox_id"]),
+                )
                 outbox = session.scalar(
                     select(OutboxMessage).where(
                         OutboxMessage.outbox_id == outbox_result["outbox_id"]
@@ -64,6 +81,7 @@ def run_mention_recovery(
                         message=message,
                         trigger_event_id=event.id,
                         outbox_id=outbox.outbox_id,
+                        mention_request_id=claim.request.id,
                     )
                     outbox_result = outbox_to_dict(
                         outbox,
