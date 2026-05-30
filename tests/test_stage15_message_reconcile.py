@@ -585,7 +585,7 @@ def test_message_reconcile_skips_mention_recovery_when_request_is_running(tmp_pa
         userid="USER_A",
         content="@回复机器人 查一下审批要求。",
         mentioned_users=["REPLY_BOT"],
-        create_time=1777827600,
+        create_time=1777827602,
     )
 
     with app.state.SessionLocal() as session:
@@ -616,7 +616,7 @@ def test_message_reconcile_skips_mention_recovery_when_request_is_running(tmp_pa
                     "msgtype": "text",
                     "text": {"content": "@回复机器人查一下审批要求。"},
                     "mentioned_users": [],
-                    "create_time": 1777827602,
+                    "create_time": 1777827599,
                 }
             ]
         )
@@ -641,6 +641,47 @@ def test_message_reconcile_skips_mention_recovery_when_request_is_running(tmp_pa
         assert result["mention_recovery_outbox_count"] == 0
         assert [call[0] for call in dify_client.calls] == []
         assert request.status == "running"
+
+
+def test_cross_source_message_links_when_times_cross_bucket_boundary(tmp_path):
+    client, app = make_client(tmp_path)
+    first_message_id = ingest_text(
+        client,
+        msgid="MSG_BUCKET_BOUNDARY_WS",
+        userid="USER_A",
+        content="@回复机器人 春季防病怎么做",
+        mentioned_users=["REPLY_BOT"],
+        create_time=1777827602,
+    )
+
+    response = client.post(
+        "/api/wecom/messages/ingest",
+        json={
+            "source": "wecom_reconcile",
+            "idempotency_key": "reconcile_bucket_boundary_payload",
+            "raw_message": {
+                "chatid": "CHAT_STAGE15",
+                "chattype": "group",
+                "from": {"userid": "USER_A", "name": "USER_A"},
+                "msgtype": "text",
+                "text": {"content": "@回复机器人春季防病怎么做"},
+                "mentioned_users": [],
+                "create_time": 1777827599,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["business_duplicated"] is True
+    assert result["canonical_message_id"] == first_message_id
+
+    with app.state.SessionLocal() as session:
+        messages = session.scalars(select(Message).order_by(Message.id)).all()
+
+        assert len(messages) == 2
+        assert messages[1].business_identity_key == messages[0].business_identity_key
+        assert messages[1].canonical_message_id == messages[0].id
 
 
 def test_message_reconcile_marks_running_mention_request_stalled_without_rerun(tmp_path):

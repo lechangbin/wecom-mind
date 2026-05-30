@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.config.settings import Settings
 from app.db.models import MentionRequest, Message, MessageRaw, now_utc
-from app.wecom.message_identity import assign_message_identity, compute_business_identity_key
+from app.wecom.message_identity import (
+    assign_message_identity,
+    resolve_business_identity_key,
+)
 from app.wecom.reply_sessions import content_fingerprint
 
 logger = logging.getLogger(__name__)
@@ -53,7 +56,8 @@ def claim_for_frame(
         )
         return MentionRequestClaim(None, False, False, "missing_userid")
 
-    business_key = compute_business_identity_key(
+    business_key, canonical_message_id, _business_duplicated = resolve_business_identity_key(
+        session,
         chatid=str(identity["chatid"]),
         userid=identity["userid"],
         content=identity["content"],
@@ -63,7 +67,7 @@ def claim_for_frame(
     return _claim(
         session,
         business_identity_key=business_key,
-        canonical_message_id=None,
+        canonical_message_id=canonical_message_id,
         chatid=str(identity["chatid"]),
         userid=identity["userid"],
         content=identity["content"],
