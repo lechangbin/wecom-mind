@@ -144,7 +144,7 @@
 - `trigger_event` 与 `ai_run=running` 写入后会先提交事务，再调用 Dify blocking，避免 SQLite 写锁导致后续 @ 消息只显示占位回复。
 - 新增 `WeComAiBotLongConnectionWorker` 和 `scripts/run_wecom_aibot_worker.py`，用于本地启动长连接常驻进程。
 - 支持回复机器人与意图/拉消息机器人分离：`WECOM_REPLY_AIBOT_*` 用于 @ 回复和发送，`WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*` 预留给消息读取和主动提醒采集。
-- 非 @ 消息默认只入库；启用 `MessageReconcileWorker` 后会按短窗口补漏并从数据库触发 `chat_proactive_reminder`，在 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时可自动发送主动客服答复。
+- 非 @ 消息默认只入库；启用 `MessageReconcileWorker` 后会按短窗口补漏，@ 漏处理消息回到 `group_knowledge_reply` 恢复链路，非 @ 消息再从数据库触发 `chat_proactive_reminder`，在 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时可自动发送客服答复。
 
 阶段 15 历史消息补漏与数据库驱动主动提醒预研实现：
 
@@ -152,13 +152,15 @@
 - `messages` 单表增加 `sender_type` 和 `bot_role`，用于区分用户消息、回复机器人消息和意图采集机器人消息，不拆分用户/机器人消息表。
 - 应用启动时会轻量回填已有 `messages` 行的 sender 分类，避免旧 SQLite 数据中机器人消息被默认当成用户消息扫描。
 - 入库幂等增强：真实 `msgid` 会跨 `source` 去重，避免同一条消息先由长连接入库、再由历史补漏入库时重复写入。
-- `src/app/wecom/message_reconcile.py` 提供单次补漏执行能力：计算窗口、调用注入的历史消息源、幂等入库、从数据库窗口触发 `chat_proactive_reminder`、成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
+- `src/app/wecom/message_reconcile.py` 提供单次补漏执行能力：计算窗口、调用注入的历史消息源、幂等入库、先执行 @ 补漏恢复，再从数据库窗口触发 `chat_proactive_reminder`，成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
+- 新增 `mention_recovery`：补漏拉到未完成的 @ 消息时，复用 `group_knowledge_reply` 并创建 `scene=reply_recovery` outbox，不再让主动提醒工作流代答 @ 问题。
+- 新增 `wecom_reply_sessions`：长连接发出 callback-bound 占位后持久化 `frame_json + stream_id`，补漏恢复匹配成功时可复用原占位 stream 发最终回复。
 - 新增 `WeComMcpMessageSource`，通过意图/拉消息机器人获取 msg MCP 配置，并调用 `get_message` 拉取群历史消息。
 - 新增 `MessageReconcileWorker` 和 `scripts/run_message_reconcile_worker.py`，可按 `WECOM_MESSAGE_RECONCILE_CHATIDS` 常驻扫描多个群。
 - `start-services.ps1` 会在 `WECOM_MESSAGE_RECONCILE_ENABLED=true` 时同时启动补漏 worker。
 - 主动提醒扫描改为 SQL 时间窗口查询，只读取 `sender_type=user` 的用户消息。
 - `chat_proactive_reminder` 输入会携带由 `trigger_events` 生成的 `handled_records`，避免重复回答已经由 @ 回复处理过的消息。
-- `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时，补漏 worker 创建 proactive outbox；`WECOM_SENDER_MODE=aibot_ws` 下由长连接 worker 复用同一条回复机器人连接发送并回写 `sent/failed`，其他 sender 模式仍可由补漏 worker 直发。
+- `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true` 时，补漏 worker 创建 `reply_recovery` 或 `proactive` outbox；`WECOM_SENDER_MODE=aibot_ws` 下由长连接 worker 复用同一条回复机器人连接发送并回写 `sent/failed`，其他 sender 模式仍可由补漏 worker 直发。
 
 当前仍不包含 Dify streaming、复杂权限、统计宽表、后台统计大屏和前端。历史消息补漏已具备真实 MCP 消息源适配和常驻 worker，但仍不作为主接收入口。
 
@@ -629,4 +631,4 @@ tests/
 
 ## 下一阶段怎么继续
 
-下一阶段建议进入真实企微历史消息读取适配、常驻补漏 worker、课程展示前端或 Dify streaming，在已有查询接口、消息、触发、ai_runs、outbox、会话段、用户画像、主动意图、真实 Dify blocking、真实企微出站发送适配、真实企微回调验签解密、normalize 入库任务处理器和单次消息补漏模块基础上继续扩展。继续前只读取该阶段需要的文档；复杂权限和统计宽表仍建议留到后续阶段。
+当前主线以 [版本路线图](./docs/architecture/version-roadmap.md) 为准。先完成 `v0.2.1` P0 消息系统架构修复：@ 请求认领、跨来源消息归并、AI 执行状态判断、占位 stream 生命周期保护；实机回归作为该阶段验收。随后进入 `v0.3` 必需功能模块：会话沉淀/会话摘要、用户画像自动更新、第一版前端界面。Dify streaming 只考虑 @ 实时回复；非 @ 主动回复继续 blocking。Redis、持久队列、分布式锁和复杂频控等生产化优化后置，等前端使用或真实流量暴露性能瓶颈后再做。

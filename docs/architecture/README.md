@@ -13,7 +13,20 @@
 
 - [Dify AI 功能重建架构](./dify-ai-architecture.html)
 
+版本路线入口：
+
+- [版本路线图](./version-roadmap.md)
+
 下一阶段开发预案：
 
+- [P0 消息系统架构修复计划](./p0-message-system-architecture-repair.md)
 - [企微消息补漏与数据库驱动主动意图识别预计划](../superpowers/plans/2026-05-29-wecom-message-reconcile-proactive-intent.md)
 - [企微历史消息补漏与主动提醒调度架构](./wecom-message-reconcile-worker.md)
+- [@ 回复兜底恢复实践报告](./mention-recovery-fallback-practice-report.md)
+
+当前 `v0.2-wecom-aibot-live` 之后的优先级：
+
+1. `v0.2.1` 先做 P0 消息系统架构修复：@ 请求认领、跨来源消息归并、AI 执行状态判断、占位 stream 生命周期保护。
+2. `v0.3` 推进必需功能模块：会话沉淀/会话摘要、用户画像自动更新、第一版前端界面。
+3. `v0.4` 在前端基础完成后深化可观测性、排障和审核流。
+4. `v0.5` 再评估 Redis、队列、分布式锁、复杂频控和生产化优化。

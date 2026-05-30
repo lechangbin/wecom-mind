@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
@@ -148,6 +148,8 @@ def _handled_records_for_messages(
         return []
 
     by_id = {message.id: message for message in messages}
+    handled_message_ids: set[int] = set()
+    handled_record_keys: set[tuple[int, str]] = set()
     events = session.scalars(
         select(TriggerEvent)
         .where(
@@ -162,15 +164,110 @@ def _handled_records_for_messages(
         message = by_id.get(event.message_id)
         if not message:
             continue
-        records.append(
-            {
-                "msgid": message.external_msgid,
-                "message_id": str(message.id),
-                "handler": event.workflow_code,
-                "reason": "mention_already_handled",
-            }
+        _append_handled_record(
+            records,
+            handled_message_ids=handled_message_ids,
+            handled_record_keys=handled_record_keys,
+            message=message,
+            event=event,
         )
+
+    _append_cross_source_handled_records(
+        session,
+        records,
+        handled_message_ids=handled_message_ids,
+        handled_record_keys=handled_record_keys,
+        messages=messages,
+    )
     return records
+
+
+def _append_cross_source_handled_records(
+    session: Session,
+    records: list[dict[str, str]],
+    *,
+    handled_message_ids: set[int],
+    handled_record_keys: set[tuple[int, str]],
+    messages: list[Message],
+) -> None:
+    candidates = [message for message in messages if message.id not in handled_message_ids]
+    if not candidates:
+        return
+
+    chatids = {message.chatid for message in candidates if message.chatid}
+    userids = {message.userid for message in candidates if message.userid}
+    if not chatids or not userids:
+        return
+
+    start_time = min(_to_utc(message.create_time) for message in candidates) - timedelta(
+        seconds=5
+    )
+    end_time = max(_to_utc(message.create_time) for message in candidates) + timedelta(
+        seconds=5
+    )
+    handled_rows = session.execute(
+        select(TriggerEvent, Message)
+        .join(Message, TriggerEvent.message_id == Message.id)
+        .where(
+            TriggerEvent.status.in_(["handled", "sent", "success"]),
+            TriggerEvent.trigger_type == "mention",
+            Message.chatid.in_(chatids),
+            Message.userid.in_(userids),
+            Message.create_time >= start_time,
+            Message.create_time <= end_time,
+        )
+        .order_by(TriggerEvent.created_at.asc(), TriggerEvent.id.asc())
+    ).all()
+
+    for candidate in candidates:
+        for event, handled_message in handled_rows:
+            if not _looks_like_same_wecom_message(candidate, handled_message):
+                continue
+            _append_handled_record(
+                records,
+                handled_message_ids=handled_message_ids,
+                handled_record_keys=handled_record_keys,
+                message=candidate,
+                event=event,
+            )
+            break
+
+
+def _looks_like_same_wecom_message(candidate: Message, handled_message: Message) -> bool:
+    if candidate.id == handled_message.id:
+        return False
+    if candidate.chatid != handled_message.chatid:
+        return False
+    if not candidate.userid or candidate.userid != handled_message.userid:
+        return False
+    if (candidate.content_text or "").strip() != (handled_message.content_text or "").strip():
+        return False
+
+    delta = abs(_to_utc(candidate.create_time) - _to_utc(handled_message.create_time))
+    return delta <= timedelta(seconds=5)
+
+
+def _append_handled_record(
+    records: list[dict[str, str]],
+    *,
+    handled_message_ids: set[int],
+    handled_record_keys: set[tuple[int, str]],
+    message: Message,
+    event: TriggerEvent,
+) -> None:
+    record_key = (message.id, message.external_msgid or "")
+    if record_key in handled_record_keys:
+        return
+    handled_record_keys.add(record_key)
+    handled_message_ids.add(message.id)
+    records.append(
+        {
+            "msgid": message.external_msgid,
+            "message_id": str(message.id),
+            "handler": event.workflow_code,
+            "reason": "mention_already_handled",
+        }
+    )
 
 
 def _messages_in_window(
@@ -188,6 +285,7 @@ def _messages_in_window(
             Message.create_time >= start_utc,
             Message.create_time <= end_utc,
             Message.sender_type == "user",
+            Message.mentioned_bot.is_(False),
         )
         .order_by(Message.create_time.asc(), Message.id.asc())
     ).all()
@@ -223,6 +321,16 @@ def _validate_proactive_output(output_json: dict[str, Any], input_json: dict[str
     if quote_msgid not in valid_msgids:
         raise ProactiveReplyOutputValidationError(
             f"quote_msgid {quote_msgid} not found in input messages"
+        )
+
+    handled_msgids = {
+        record["msgid"]
+        for record in payload.get("handled_records", [])
+        if isinstance(record, dict) and record.get("msgid")
+    }
+    if quote_msgid in handled_msgids:
+        raise ProactiveReplyOutputValidationError(
+            f"quote_msgid {quote_msgid} was already handled by mention reply"
         )
 
 

@@ -3,10 +3,11 @@ import time
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import func, select
 
 from app.config.settings import Settings
-from app.db.models import Message, MessageRaw, OutboxMessage
+from app.db.models import Message, MessageRaw, OutboxMessage, WeComReplySession
 from app.main import create_app
 from app.outbound.sender import WeComAiBotWsMessageSender
 from app.wecom.aibot import (
@@ -185,6 +186,21 @@ def test_aibot_frame_normalizer_uses_req_id_for_idempotency_when_msgid_missing()
 
     assert "msgid" not in payload.raw_message
     assert payload.idempotency_key == "aibot_ws_req_REQ_MSG_WS_1"
+
+
+def test_aibot_frame_normalizer_infers_text_and_hashes_payload_when_ids_missing():
+    frame = text_frame()
+    frame["headers"] = {}
+    frame["body"].pop("msgid")
+    frame["body"].pop("msgtype")
+
+    payload = AiBotFrameNormalizer().normalize(frame)
+
+    assert payload.source == "aibot_ws"
+    assert payload.idempotency_key.startswith("aibot_ws_payload_")
+    assert "msgid" not in payload.raw_message
+    assert payload.raw_message["msgtype"] == "text"
+    assert payload.raw_message["text"]["content"] == "@机器人 查一下标签要求"
 
 
 def test_aibot_frame_normalizer_keeps_mixed_message_and_combines_text_items():
@@ -495,6 +511,151 @@ def test_aibot_worker_dispatches_new_pending_proactive_outbox(tmp_path):
         outbox = session.scalar(select(OutboxMessage))
         assert outbox.status == "sent"
         assert outbox.external_msgid == "WS_SENT_1"
+
+
+def test_aibot_worker_records_callback_reply_session_before_dify_finishes(tmp_path):
+    dify_client = SlowGroupKnowledgeReplyDifyClient(delay_seconds=0.3)
+    sender = CallbackRecordingSender()
+    ws_client = FakeWsClient()
+    app = make_app(tmp_path, dify_client=dify_client)
+    worker = WeComAiBotLongConnectionWorker(
+        settings=app.state.settings,
+        session_factory=app.state.SessionLocal,
+        dify_client=dify_client,
+        sender=sender,
+        ws_client_factory=lambda _settings: ws_client,
+    )
+
+    async def run_frame():
+        await worker.start()
+        await ws_client.handlers["message.text"](text_frame())
+        await wait_until(lambda: len(sender.started) == 1)
+        await wait_until(lambda: scalar_count(app, WeComReplySession) == 1)
+        assert dify_client.calls == []
+        await wait_until(lambda: len(sender.finished) == 1)
+
+    asyncio.run(run_frame())
+
+    with app.state.SessionLocal() as session:
+        reply_session = session.scalar(select(WeComReplySession))
+
+        assert reply_session.chatid == "CHAT_WS"
+        assert reply_session.userid == "USER_A"
+        assert reply_session.source_msgid == "MSG_WS_1"
+        assert reply_session.req_id == "REQ_MSG_WS_1"
+        assert reply_session.stream_id == sender.started[0][2]
+        assert reply_session.placeholder_status == "sent"
+        assert reply_session.final_status == "sent"
+        assert reply_session.frame_json["headers"]["req_id"] == "REQ_MSG_WS_1"
+
+
+def test_aibot_worker_continues_when_callback_reply_session_record_is_locked(
+    tmp_path,
+    monkeypatch,
+):
+    dify_client = GroupKnowledgeReplyDifyClient()
+    sender = CallbackRecordingSender()
+    ws_client = FakeWsClient()
+    app = make_app(tmp_path, dify_client=dify_client)
+    worker = WeComAiBotLongConnectionWorker(
+        settings=app.state.settings,
+        session_factory=app.state.SessionLocal,
+        dify_client=dify_client,
+        sender=sender,
+        ws_client_factory=lambda _settings: ws_client,
+    )
+
+    def locked_record(*_args, **_kwargs):
+        raise OperationalError("insert into wecom_reply_sessions", {}, "database is locked")
+
+    monkeypatch.setattr("app.wecom.aibot.record_reply_session_placeholder", locked_record)
+
+    async def run_frame():
+        await worker.start()
+        await ws_client.handlers["message.text"](text_frame())
+        await wait_until(lambda: len(sender.started) == 1)
+        await wait_until(lambda: len(sender.finished) == 1)
+
+    asyncio.run(run_frame())
+
+    assert len(dify_client.calls) == 1
+    assert sender.finished[0][2] == sender.started[0][2]
+    assert scalar_count(app, MessageRaw) == 1
+    assert scalar_count(app, OutboxMessage) == 1
+
+
+def test_aibot_worker_dispatches_reply_recovery_outbox_on_recorded_callback_stream(
+    tmp_path,
+):
+    settings = Settings(
+        app_env="test",
+        database_url=f"sqlite:///{tmp_path / 'stage14_recovery_dispatcher.db'}",
+        wecom_aibot_id="BOT_ID",
+        wecom_aibot_name="机器人",
+        wecom_message_reconcile_auto_send=True,
+    )
+    app = create_app(settings=settings)
+    sender = CallbackRecordingSender()
+    ws_client = FakeWsClient()
+    worker = WeComAiBotLongConnectionWorker(
+        settings=settings,
+        session_factory=app.state.SessionLocal,
+        dify_client=GroupKnowledgeReplyDifyClient(),
+        sender=sender,
+        ws_client_factory=lambda _settings: ws_client,
+    )
+
+    async def run_dispatcher():
+        await worker.start()
+        try:
+            with app.state.SessionLocal() as session:
+                session.add(
+                    OutboxMessage(
+                        outbox_id="out_reply_recovery_dispatch",
+                        scene="reply_recovery",
+                        chatid="CHAT_WS",
+                        target_userids=[],
+                        msgtype="markdown",
+                        content={"markdown": {"content": "恢复后的最终回复。"}},
+                        source_type="ai_run",
+                        source_id="airun_recovery_dispatch",
+                        status="pending",
+                        idempotency_key="reply_recovery_dispatch",
+                        created_at=datetime.now(timezone.utc),
+                    )
+                )
+                session.add(
+                    WeComReplySession(
+                        session_id="reply_session_dispatch",
+                        chatid="CHAT_WS",
+                        userid="USER_A",
+                        source_msgid="MSG_RECOVERY",
+                        req_id="REQ_MSG_RECOVERY",
+                        content_fingerprint="fp_recovery",
+                        frame_json=text_frame(msgid="MSG_RECOVERY"),
+                        stream_id="STREAM_RECOVERY",
+                        placeholder_status="sent",
+                        final_status="pending",
+                        outbox_id="out_reply_recovery_dispatch",
+                    )
+                )
+                session.commit()
+            await wait_until(lambda: len(sender.finished) == 1)
+        finally:
+            await worker.stop()
+
+    asyncio.run(run_dispatcher())
+
+    assert sender.finished[0][0].outbox_id == "out_reply_recovery_dispatch"
+    assert sender.finished[0][2] == "STREAM_RECOVERY"
+    assert sender.active_sent == []
+    with app.state.SessionLocal() as session:
+        outbox = session.scalar(select(OutboxMessage))
+        reply_session = session.scalar(select(WeComReplySession))
+
+        assert outbox.status == "sent"
+        assert outbox.external_msgid == "WS_REPLY_1"
+        assert reply_session.final_status == "sent"
 
 
 def test_aibot_worker_handler_returns_before_dify_finishes(tmp_path):

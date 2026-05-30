@@ -314,6 +314,50 @@ class OutboxMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class WeComReplySession(Base):
+    __tablename__ = "wecom_reply_sessions"
+    __table_args__ = (
+        Index(
+            "ix_wecom_reply_sessions_chat_user_fingerprint",
+            "chatid",
+            "userid",
+            "content_fingerprint",
+        ),
+        Index("ix_wecom_reply_sessions_outbox_id", "outbox_id"),
+    )
+
+    id: Mapped[int] = id_column()
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    chatid: Mapped[str] = mapped_column(String(128), nullable=False)
+    userid: Mapped[str | None] = mapped_column(String(128))
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"))
+    source_msgid: Mapped[str | None] = mapped_column(String(255), index=True)
+    req_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    frame_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    stream_id: Mapped[str | None] = mapped_column(String(128))
+    placeholder_status: Mapped[str] = mapped_column(
+        String(32),
+        default="sent",
+        nullable=False,
+    )
+    final_status: Mapped[str] = mapped_column(
+        String(32),
+        default="pending",
+        nullable=False,
+    )
+    trigger_event_id: Mapped[int | None] = mapped_column(ForeignKey("trigger_events.id"))
+    outbox_id: Mapped[str | None] = mapped_column(String(64))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        onupdate=now_utc,
+    )
+
+
 class ScheduledIntent(Base):
     __tablename__ = "scheduled_intents"
     __table_args__ = (

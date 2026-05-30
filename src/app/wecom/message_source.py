@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from app.wecom.client import WeComApiError
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 USER_AGENT = "wecom-dify-bot/0.1 python"
+logger = logging.getLogger(__name__)
 
 
 class WeComMcpMessageSource:
@@ -154,19 +156,28 @@ def _normalize_message(
     chat_type: int,
 ) -> dict[str, Any]:
     msgtype = str(message.get("msgtype") or "text")
+    from_user = message.get("from") if isinstance(message.get("from"), dict) else {}
+    userid = message.get("userid") or message.get("from_userid") or from_user.get("userid")
     normalized = {
         "msgid": str(message.get("msgid") or message.get("external_msgid") or ""),
         "chatid": str(message.get("chatid") or chatid),
         "chattype": "group" if chat_type == 2 else "single",
-        "from": {"userid": str(message.get("userid") or message.get("from_userid") or "")},
+        "from": {"userid": str(userid or "")},
         "msgtype": msgtype,
         "mentioned_users": _extract_mentioned_users(message),
         "create_time": _normalize_mcp_message_time(
             message.get("send_time") or message.get("create_time")
         ),
     }
-    if isinstance(message.get("from"), dict):
-        normalized["from"].update(message["from"])
+    if from_user:
+        normalized["from"].update(from_user)
+    if not normalized["from"].get("userid"):
+        logger.error(
+            "WeCom MCP message missing userid chatid=%s msgid=%s msgtype=%s",
+            normalized["chatid"],
+            normalized["msgid"],
+            msgtype,
+        )
     if isinstance(message.get("text"), dict):
         normalized["text"] = message["text"]
     elif message.get("content") is not None:

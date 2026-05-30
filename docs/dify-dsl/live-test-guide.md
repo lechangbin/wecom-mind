@@ -137,12 +137,12 @@ POST /api/outbox-messages/{outbox_id}/send
 2. 设置 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true`，并确认 `WECOM_SENDER_MODE=aibot_ws`。
 3. 启动 API、长连接 worker 和消息补漏 worker。
 4. 在群内发送一条 @ 回复机器人消息，确认实时 @ 回复正常。
-5. 等待一次补漏扫描后，确认该消息入库但不会被主动提醒重复处理。
+5. 等待一次补漏扫描后，确认该消息不会进入 `chat_proactive_reminder`。如果实时 @ 链路未完成，补漏应创建 `scene=reply_recovery`，并优先复用已有占位 stream。
 6. 在群内发送一条非 @ 的知识需求消息，等待补漏扫描和主动提醒扫描。
 7. 确认补漏拉取的用户消息落库后 `messages.userid` 非空。
-8. 确认主动提醒只引用输入中真实存在的 `msgid`，且不引用机器人消息。
+8. 确认主动提醒只引用输入中真实存在的 `msgid`，且不引用机器人消息或 @ 消息。
 9. 确认 Dify 返回 `should_send=true` 时创建 `scene=proactive` outbox，并由长连接 worker 复用 `aibot_ws send_message` 自动发送。
-10. 确认 `outbox_messages.status=sent`，或失败时为 `failed` 且保存错误原因。
+10. 确认 `reply_recovery` / `proactive` 的 `outbox_messages.status=sent`，或失败时为 `failed` 且保存错误原因。
 11. 确认 `wecom_mcp_pull_cursors.last_pulled_at` 在成功扫描后更新。
 
 ## 当前注意事项
