@@ -152,6 +152,8 @@
 | userid | varchar | 发送人 userid |
 | msgtype | varchar | text / image / file / voice / mixed |
 | content_text | text | 文本内容 |
+| business_identity_key | varchar | 业务消息身份键，用于关联长连接与补漏来源 |
+| canonical_message_id | bigint | 同一业务消息的主消息 ID |
 | normalized_content | json | 标准化内容 |
 | quote_message | json | 企微 quote 字段 |
 | quote_msgid | varchar | 引用消息 ID，可为空 |
@@ -166,8 +168,43 @@
 - `userid, create_time`
 - `mentioned_bot, create_time`
 - `msgtype, create_time`
+- `business_identity_key`
+- `canonical_message_id`
 
-### 2.8 trigger_rules
+### 2.8 mention_requests
+
+保存 @ 请求的唯一处理权和生命周期状态。长连接与补漏链路都必须先通过该表认领或检查同一业务 @ 请求。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | bigint | 内部主键 |
+| request_id | varchar | @ 请求 ID |
+| business_identity_key | varchar | 唯一业务消息身份键 |
+| canonical_message_id | bigint | 关联主消息 ID |
+| chatid | varchar | 会话 ID |
+| userid | varchar | 发起用户 |
+| content_fingerprint | varchar | 规范化文本指纹 |
+| source_msgid | varchar | 来源消息 ID |
+| req_id | varchar | 长连接请求 ID |
+| status | varchar | claimed / running / succeeded / outbox_pending / sending / completed / failed / stalled / canceled |
+| owner | varchar | long_connection / reconcile |
+| trigger_event_id | bigint | 触发事件 ID |
+| ai_run_id | bigint | AI 运行 ID |
+| outbox_id | varchar | 绑定的 outbox |
+| reply_session_id | bigint | 绑定的 callback 占位 session |
+| claimed_at | datetime | 认领时间 |
+| started_at | datetime | AI 开始时间 |
+| completed_at | datetime | 完成时间 |
+| stalled_at | datetime | 超时停滞时间 |
+| last_error | text | 最后错误 |
+| created_at | datetime | 创建时间 |
+| updated_at | datetime | 更新时间 |
+
+唯一约束：
+
+- `business_identity_key`
+
+### 2.9 trigger_rules
 
 保存触发规则。
 
@@ -184,7 +221,7 @@
 | created_at | datetime | 创建时间 |
 | updated_at | datetime | 更新时间 |
 
-### 2.9 trigger_events
+### 2.10 trigger_events
 
 保存触发命中记录。
 
@@ -205,7 +242,7 @@
 
 - `rule_code, message_id`
 
-### 2.10 ai_workflows
+### 2.11 ai_workflows
 
 保存 Dify 工作流注册信息。
 
@@ -229,7 +266,7 @@
 
 - `workflow_code, version`
 
-### 2.11 ai_runs
+### 2.12 ai_runs
 
 保存每次 Dify 调用记录。
 
@@ -255,7 +292,7 @@
 
 - `run_id`
 
-### 2.12 bot_replies
+### 2.13 bot_replies
 
 保存机器人回复。
 
@@ -275,7 +312,7 @@
 | created_at | datetime | 创建时间 |
 | sent_at | datetime | 发送时间 |
 
-### 2.13 outbox_messages
+### 2.14 outbox_messages
 
 保存待发送和已发送消息。
 
@@ -303,7 +340,7 @@
 
 - `outbox_id`
 
-### 2.14 conversation_segments
+### 2.15 conversation_segments
 
 保存会话切分结果。
 
@@ -331,7 +368,7 @@
 
 - `conversation_no, version`
 
-### 2.15 user_profiles
+### 2.16 user_profiles
 
 保存用户画像快照。
 
@@ -351,7 +388,7 @@
 
 - `userid, version`
 
-### 2.16 user_profile_facts
+### 2.17 user_profile_facts
 
 保存画像事实。
 

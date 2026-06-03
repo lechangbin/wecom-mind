@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import logging
 
 import httpx
 
@@ -156,6 +157,71 @@ def test_wecom_mcp_message_source_fetches_and_normalizes_messages():
         }
     ]
     assert len(requests) == 2
+
+
+def test_wecom_mcp_message_source_logs_missing_userid(caplog):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config":
+            return httpx.Response(
+                200,
+                json={
+                    "errcode": 0,
+                    "list": [
+                        {
+                            "biz_type": "msg",
+                            "url": "https://mcp.example.local/rpc",
+                        }
+                    ],
+                },
+            )
+
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(
+                                {
+                                    "errcode": 0,
+                                    "messages": [
+                                        {
+                                            "msgid": "MSG_MISSING_USERID",
+                                            "send_time": "2026-05-29 10:00:03",
+                                            "msgtype": "text",
+                                            "text": {"content": "客户问审批要求。"},
+                                        }
+                                    ],
+                                },
+                                ensure_ascii=False,
+                            ),
+                        }
+                    ]
+                }
+            },
+        )
+
+    source = WeComMcpMessageSource(
+        Settings(
+            wecom_intent_aibot_id="INTENT_BOT",
+            wecom_intent_aibot_secret="intent-secret",
+            wecom_message_reconcile_pages=1,
+        ),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with caplog.at_level(logging.ERROR, logger="app.wecom.message_source"):
+        messages = source.fetch_messages(
+            chatid="CHAT_STAGE16",
+            start_time=datetime(2026, 5, 29, 2, 0, 0, tzinfo=timezone.utc),
+            end_time=datetime(2026, 5, 29, 2, 0, 12, tzinfo=timezone.utc),
+        )
+
+    assert messages[0]["from"]["userid"] == ""
+    assert "WeCom MCP message missing userid" in caplog.text
+    assert "CHAT_STAGE16" in caplog.text
+    assert "MSG_MISSING_USERID" in caplog.text
 
 
 def test_message_reconcile_auto_sends_created_proactive_outbox(tmp_path):

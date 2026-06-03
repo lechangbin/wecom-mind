@@ -221,6 +221,7 @@ def send_outbox_message(
 
     outbox.status = "sending"
     session.flush()
+    session.commit()
 
     try:
         result = sender.send(outbox)
@@ -235,6 +236,7 @@ def send_outbox_message(
     _apply_send_result(session, outbox, result)
 
     session.flush()
+    session.commit()
     return outbox, False
 
 
@@ -254,6 +256,7 @@ async def send_outbox_message_async(
 
     outbox.status = "sending"
     session.flush()
+    session.commit()
 
     try:
         result = await sender.send_async(outbox)
@@ -267,6 +270,7 @@ async def send_outbox_message_async(
 
     _apply_send_result(session, outbox, result)
     session.flush()
+    session.commit()
     return outbox, False
 
 

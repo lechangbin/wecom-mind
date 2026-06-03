@@ -65,8 +65,10 @@
 3. 消息读取配置入口为 `WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*`，该机器人应具备群消息读取权限。
 4. 拉到的消息必须先转换为 `MessageIngestRequest`，并复用 `ingest_message()` 写入 `messages_raw/messages`。
 5. 补漏任务不得直接把企微拉取结果传给 Dify。Dify 输入只能从数据库窗口构造。
-6. 成功完成入库和主动提醒扫描后，更新 `wecom_mcp_pull_cursors.last_pulled_at`。
-7. 如果 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true`，主动提醒 outbox 创建后进入自动发送链路；`aibot_ws` 模式由长连接 worker 复用回复机器人连接发送并回写 `sent/failed`。
+6. 入库后先执行 `mention_recovery`：补漏拉到未完成的 @ 消息时，回到 `group_knowledge_reply` 链路并创建 `reply_recovery` outbox。
+7. 非 @ 用户消息再进入数据库窗口扫描，调用 `chat_proactive_reminder` 判断是否主动答复。
+8. 成功完成入库、@ 恢复扫描和主动提醒扫描后，更新 `wecom_mcp_pull_cursors.last_pulled_at`。
+9. 如果 `WECOM_MESSAGE_RECONCILE_AUTO_SEND=true`，主动提醒和 @ 恢复 outbox 创建后进入自动发送链路；`aibot_ws` 模式由长连接 worker 复用回复机器人连接发送并回写 `sent/failed`。
 
 当前代码已提供真实 MCP 消息源适配和常驻补漏 worker。补漏 worker 只有在 `WECOM_MESSAGE_RECONCILE_ENABLED=true` 且配置了 `WECOM_MESSAGE_RECONCILE_CHATIDS` 时运行。
 
@@ -83,6 +85,7 @@
 注意：
 
 - @ 实时流式回复必须依赖原始 frame 或 req_id。
+- 长连接发出 @ 占位后会短期持久化 `wecom_reply_sessions`，便于补漏恢复时复用原 stream。
 - 主动消息不依赖原始 frame。
 
 ## 4. 关键数据表
@@ -91,6 +94,8 @@
 - `wecom_mcp_pull_cursors`
 - `message_ingestion_jobs`
 - `messages_raw`
+- `mention_requests`
+- `wecom_reply_sessions`
 - `outbox_messages`
 
 ## 5. MVP 实现范围
@@ -105,16 +110,18 @@
 - 文本和 mixed 消息入库。
 - 消息入库时在单表 `messages` 内标记 `sender_type` 和 `bot_role`，不拆分用户消息表和机器人消息表。
 - 应用启动时回填已有消息的 `sender_type` / `bot_role`，避免旧数据中的机器人消息被主动提醒误扫。
-- 真实 `msgid` 跨 `source` 幂等，避免长连接和历史补漏重复写同一条消息。
+- 长连接和历史补漏的跨来源消息保留各自入库记录，并通过 `business_identity_key/canonical_message_id` 关联到同一业务消息。
+- @ 请求进入 Dify 前必须先写入或检查 `mention_requests`，避免补漏抢占正在运行的长连接请求。
 - @ 消息自动触发 Dify。
 - outbox 通过长连接发送。
-- 历史补漏常驻 worker：短窗口拉取、幂等入库、数据库驱动主动提醒扫描、cursor 更新、可选自动发送。
+- 历史补漏常驻 worker：短窗口拉取、幂等入库、@ 补漏恢复、数据库驱动主动提醒扫描、cursor 更新、可选自动发送。
 
 优先验证：
 
 - 真实测试群 @ 机器人可以收到回复。
 - 非 @ 消息在长连接入口不会即时回复；启用补漏 worker 和 `AUTO_SEND=true` 后，可在短窗口扫描后自动主动答复。
-- 重复 msgid 不会重复入库和发送。
+- 补漏拉到未完成的 @ 消息时，应进入 `mention_recovery -> group_knowledge_reply`，而不是被 `chat_proactive_reminder` 抢答。
+- 同 source 重复消息不会重复入库；跨 source 同业务消息会保留并关联，但不会重复触发回复。
 
 可延后：
 
@@ -132,5 +139,6 @@
 - 能将至少一种文本消息写入消息处理模块。
 - 能向指定 chatid 发送一条普通消息。
 - 非 @ 消息不会在长连接入口直接调用 Dify；补漏 worker 会从数据库窗口调用 `chat_proactive_reminder`。
+- 补漏 @ 恢复会创建 `scene=reply_recovery`，有可用 `wecom_reply_sessions` 时复用原 callback stream，没有时降级普通发送。
 - 主动提醒扫描只读取用户消息，不把机器人消息作为候选问题传给 Dify。
 - 历史补漏拉取的用户消息必须携带真实 `userid` 并落库到 `messages.userid`；主动回复不做无 `userid` 的身份推断。

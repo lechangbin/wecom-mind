@@ -150,6 +150,8 @@ class Message(Base):
         Index("ix_messages_userid_create_time", "userid", "create_time"),
         Index("ix_messages_mentioned_bot_create_time", "mentioned_bot", "create_time"),
         Index("ix_messages_msgtype_create_time", "msgtype", "create_time"),
+        Index("ix_messages_business_identity_key", "business_identity_key"),
+        Index("ix_messages_canonical_message_id", "canonical_message_id"),
         Index(
             "ix_messages_chatid_sender_type_create_time",
             "chatid",
@@ -172,6 +174,8 @@ class Message(Base):
     sender_type: Mapped[str] = mapped_column(String(32), default="user", nullable=False)
     bot_role: Mapped[str | None] = mapped_column(String(32))
     content_text: Mapped[str | None] = mapped_column(Text)
+    business_identity_key: Mapped[str | None] = mapped_column(String(128))
+    canonical_message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"))
     normalized_content: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     quote_message: Mapped[Any | None] = mapped_column(JSON)
     quote_msgid: Mapped[str | None] = mapped_column(String(255))
@@ -179,6 +183,48 @@ class Message(Base):
     mentioned_users: Mapped[list[Any]] = mapped_column(JSON, default=list, nullable=False)
     create_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class MentionRequest(Base):
+    __tablename__ = "mention_requests"
+    __table_args__ = (
+        UniqueConstraint(
+            "business_identity_key",
+            name="uq_mention_requests_business_identity_key",
+        ),
+        Index("ix_mention_requests_status_updated_at", "status", "updated_at"),
+        Index("ix_mention_requests_canonical_message_id", "canonical_message_id"),
+        Index("ix_mention_requests_outbox_id", "outbox_id"),
+    )
+
+    id: Mapped[int] = id_column()
+    request_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    business_identity_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    canonical_message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"))
+    chatid: Mapped[str] = mapped_column(String(128), nullable=False)
+    userid: Mapped[str | None] = mapped_column(String(128))
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    source_msgid: Mapped[str | None] = mapped_column(String(255))
+    req_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(32), default="claimed", nullable=False)
+    owner: Mapped[str] = mapped_column(String(32), nullable=False)
+    trigger_event_id: Mapped[int | None] = mapped_column(ForeignKey("trigger_events.id"))
+    ai_run_id: Mapped[int | None] = mapped_column(ForeignKey("ai_runs.id"))
+    outbox_id: Mapped[str | None] = mapped_column(String(64))
+    reply_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("wecom_reply_sessions.id")
+    )
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stalled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        onupdate=now_utc,
+    )
 
 
 class TriggerRule(Base):
@@ -312,6 +358,54 @@ class OutboxMessage(Base):
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class WeComReplySession(Base):
+    __tablename__ = "wecom_reply_sessions"
+    __table_args__ = (
+        Index(
+            "ix_wecom_reply_sessions_chat_user_fingerprint",
+            "chatid",
+            "userid",
+            "content_fingerprint",
+        ),
+        Index("ix_wecom_reply_sessions_outbox_id", "outbox_id"),
+        Index("ix_wecom_reply_sessions_mention_request_id", "mention_request_id"),
+    )
+
+    id: Mapped[int] = id_column()
+    session_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    chatid: Mapped[str] = mapped_column(String(128), nullable=False)
+    userid: Mapped[str | None] = mapped_column(String(128))
+    message_id: Mapped[int | None] = mapped_column(ForeignKey("messages.id"))
+    mention_request_id: Mapped[int | None] = mapped_column(
+        ForeignKey("mention_requests.id")
+    )
+    source_msgid: Mapped[str | None] = mapped_column(String(255), index=True)
+    req_id: Mapped[str | None] = mapped_column(String(255), index=True)
+    content_fingerprint: Mapped[str | None] = mapped_column(String(64))
+    frame_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    stream_id: Mapped[str | None] = mapped_column(String(128))
+    placeholder_status: Mapped[str] = mapped_column(
+        String(32),
+        default="sent",
+        nullable=False,
+    )
+    final_status: Mapped[str] = mapped_column(
+        String(32),
+        default="pending",
+        nullable=False,
+    )
+    trigger_event_id: Mapped[int | None] = mapped_column(ForeignKey("trigger_events.id"))
+    outbox_id: Mapped[str | None] = mapped_column(String(64))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=now_utc,
+        onupdate=now_utc,
+    )
 
 
 class ScheduledIntent(Base):

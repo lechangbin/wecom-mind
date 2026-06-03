@@ -13,6 +13,13 @@ from app.dify.client import DifyClient
 from app.outbound.services import send_outbox_message
 from app.proactive_replies.schemas import ProactiveReplyRunRequest
 from app.proactive_replies.services import run_proactive_reply
+from app.wecom.mention_recovery import run_mention_recovery
+from app.wecom.mention_requests import (
+    find_by_outbox_id,
+    mark_completed,
+    mark_failed,
+    mark_sending,
+)
 from app.wecom.schemas import MessageIngestRequest
 from app.wecom.services import ingest_message
 
@@ -85,6 +92,62 @@ def run_message_reconcile_once(
             ingested_count += 1
     session.commit()
 
+    mention_recovery_status = "skipped_no_messages"
+    mention_recovery_count = 0
+    mention_recovery_outbox_count = 0
+    mention_recovery_sent_outbox_count = 0
+    mention_recovery_result = run_mention_recovery(
+        session,
+        chatid=chatid,
+        start_time=start_time,
+        end_time=end_time,
+        dify_client=dify_client,
+        settings=settings,
+        auto_enqueue=auto_enqueue,
+    )
+    mention_recovery_status = str(mention_recovery_result["status"])
+    mention_recovery_count = int(mention_recovery_result["recovered_count"])
+    mention_recovery_outboxes = mention_recovery_result.get("outboxes") or []
+    mention_recovery_outbox_count = len(mention_recovery_outboxes)
+    should_send_directly = (
+        auto_send
+        and sender is not None
+        and settings.wecom_sender_mode != "aibot_ws"
+    )
+    if should_send_directly:
+        for outbox_info in mention_recovery_outboxes:
+            outbox_id = outbox_info.get("outbox_id")
+            if not outbox_id:
+                continue
+            mention_request = find_by_outbox_id(session, str(outbox_id))
+            if mention_request is not None:
+                if mention_request.status == "completed":
+                    continue
+                if (
+                    mention_request.outbox_id
+                    and mention_request.outbox_id != str(outbox_id)
+                ):
+                    continue
+                if mention_request.status == "running":
+                    continue
+                mark_sending(session, mention_request)
+            _outbox, duplicated = send_outbox_message(
+                session,
+                outbox_identifier=str(outbox_id),
+                sender=sender,
+            )
+            if _outbox.status == "sent":
+                mark_completed(session, mention_request)
+            elif _outbox.status == "failed":
+                mark_failed(
+                    session,
+                    mention_request,
+                    error_message=_outbox.error_message,
+                )
+            if not duplicated and _outbox.status == "sent":
+                mention_recovery_sent_outbox_count += 1
+        session.commit()
+
     proactive_status = "skipped_no_messages"
     outbox_count = 0
     sent_outbox_count = 0
@@ -104,11 +167,6 @@ def run_message_reconcile_once(
         proactive_status = str(proactive_result["status"])
         outboxes = proactive_result.get("outboxes") or []
         outbox_count = len(outboxes)
-        should_send_directly = (
-            auto_send
-            and sender is not None
-            and settings.wecom_sender_mode != "aibot_ws"
-        )
         if should_send_directly:
             for outbox_info in outboxes:
                 outbox_id = outbox_info.get("outbox_id")
@@ -134,6 +192,10 @@ def run_message_reconcile_once(
         "fetched_count": len(raw_messages),
         "ingested_count": ingested_count,
         "duplicated_count": duplicated_count,
+        "mention_recovery_status": mention_recovery_status,
+        "mention_recovery_count": mention_recovery_count,
+        "mention_recovery_outbox_count": mention_recovery_outbox_count,
+        "mention_recovery_sent_outbox_count": mention_recovery_sent_outbox_count,
         "proactive_status": proactive_status,
         "outbox_count": outbox_count,
         "sent_outbox_count": sent_outbox_count,

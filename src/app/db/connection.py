@@ -62,10 +62,44 @@ def _ensure_lightweight_schema_upgrades(engine: Engine) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE messages ADD COLUMN bot_role VARCHAR(32)"
             )
+        if "business_identity_key" not in message_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN business_identity_key VARCHAR(128)"
+            )
+        if "canonical_message_id" not in message_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE messages ADD COLUMN canonical_message_id INTEGER "
+                "REFERENCES messages(id)"
+            )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_messages_business_identity_key "
+            "ON messages (business_identity_key)"
+        )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_messages_canonical_message_id "
+            "ON messages (canonical_message_id)"
+        )
         connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_messages_chatid_sender_type_create_time "
             "ON messages (chatid, sender_type, create_time)"
         )
+
+        reply_session_columns = {
+            row[1]
+            for row in connection.exec_driver_sql(
+                "PRAGMA table_info(wecom_reply_sessions)"
+            )
+        }
+        if reply_session_columns and "mention_request_id" not in reply_session_columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE wecom_reply_sessions "
+                "ADD COLUMN mention_request_id INTEGER REFERENCES mention_requests(id)"
+            )
+        if reply_session_columns:
+            connection.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_wecom_reply_sessions_mention_request_id "
+                "ON wecom_reply_sessions (mention_request_id)"
+            )
 
 
 def check_database_connection(engine: Engine) -> bool:

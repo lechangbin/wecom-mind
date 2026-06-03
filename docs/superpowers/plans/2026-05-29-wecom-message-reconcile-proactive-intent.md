@@ -21,8 +21,15 @@ Implemented in this branch:
 - Cross-source idempotency for real `msgid`, preventing long-connection and reconcile paths from duplicating the same WeCom message.
 - Proactive scan SQL window filtering with `sender_type = "user"`.
 - Durable `handled_records` built from `trigger_events` and passed into `chat_proactive_reminder`.
+- Cross-source handled mention alignment for history messages that lack a real `msgid`: when long connection has already handled a mention and the puller later sees the same chat/user/content within a short time window under a payload-derived id, the pulled row is also passed as `handled_records`.
+- Proactive output validation rejects any `quote_msgid` that is already listed in `handled_records`.
 - `run_message_reconcile_once()` for single-run historical supplement: calculate window, fetch from injected source, idempotently ingest, run DB-driven proactive scan, update `wecom_mcp_pull_cursors`.
 - Real WeCom MCP message source adapter for `get_message`, normalized into the same `ingest_message()` raw message format.
+- Defensive long-connection frame normalization: when an AiBot frame has text content but omits `msgtype`, infer `text`; when both `msgid` and `req_id` are absent, use a stable payload idempotency key without inventing a business `msgid`.
+- Proactive scan excludes `mentioned_bot = true` messages so `chat_proactive_reminder` can never answer an @ message with proactive wording.
+- `mention_recovery` now handles history-pulled @ messages that have not produced a reply outbox, routes them back through `group_knowledge_reply`, and creates `scene=reply_recovery`.
+- `wecom_reply_sessions` persists callback placeholder state (`frame_json`, `stream_id`, message identity, status) so recovered @ replies can reuse the original stream when available.
+- The long-connection worker dispatcher sends both `proactive` and `reply_recovery` pending outboxes in `aibot_ws` mode.
 - Permanent `MessageReconcileWorker` plus `scripts/run_message_reconcile_worker.py`, launched by `scripts/start_local_services.ps1` when `WECOM_MESSAGE_RECONCILE_ENABLED=true`.
 - `WECOM_SENDER_MODE=aibot_ws` automatic proactive sending now avoids a second temporary WebSocket connection. The reconcile worker creates pending proactive outbox records; the long-connection worker reuses the reply bot WebSocket connection to send new proactive outboxes.
 - Documentation updates for the WeCom adapter, trigger handling, live-test guide, README, and execution-flow HTML.
@@ -41,13 +48,14 @@ Deferred after this implementation:
 1. The historical puller is a supplement, not the primary callback path.
 2. The scanner interval remains 10 seconds, but the message fetch lookback is 12 seconds to absorb about 2 seconds of clock/network/timer drift.
 3. Dify proactive intent detection must read from the local database, not directly from WeCom pull responses.
-4. Exclusion must be based on durable processing facts, especially `trigger_events` for already handled @ messages. Do not rely on text prefix checks such as whether content starts with `@`.
+4. Exclusion must be based on structured fields and durable processing facts: `mentioned_bot = true` messages are not proactive candidates, and already handled @ messages are represented by `trigger_events`. Do not rely on text prefix checks such as whether content starts with `@`.
 5. Keep all group messages in one normalized `messages` table. Add sender classification fields instead of splitting robot/user messages into separate tables.
 6. A temporary in-memory processed set is allowed only as a performance cache. The database remains the source of truth.
 7. This stage does not require a strict global database queue. If later tests show ordering or retry pressure, add a per-chat job queue as a separate stage.
 8. Treat `userid` as a required contract for automatic proactive replies. The current real-machine `get_message` path can return `userid`, and this branch relies on that. Do not fabricate `userid`; if a pulled message has no real userid, it cannot become a proactive reply target and must not create an automatic @ outbox.
 9. Non-@ proactive replies cannot use callback-bound placeholder streams. Placeholder and future streaming are only available when the system receives an original long-connection frame with callback metadata. History/MCP-pulled messages can only use normal proactive `send_message` after Dify finishes, unless the product explicitly accepts a separate "processing" message.
 10. In `aibot_ws` mode, the reconcile worker must not open a separate temporary WebSocket to send proactive replies. It creates the outbox; the long-connection worker owns the reply bot WebSocket and sends new pending proactive outboxes.
+11. @ fallback recovery is not a proactive intent path. History-pulled @ messages must go through `mention_recovery -> group_knowledge_reply`; if a `wecom_reply_sessions` row exists, final delivery should reuse that callback stream.
 
 ## Current Facts To Preserve
 
@@ -58,8 +66,11 @@ Deferred after this implementation:
 - The proactive scan helper now uses a SQL `chatid + create_time` window and `sender_type = "user"` filtering.
 - Current real-machine tests have shown that the active `get_message` path can return user identity in this environment. Automatic proactive customer-service replies require `userid`; without it, the system cannot distinguish users or safely @ a target.
 - @ replies can show an early placeholder because the long-connection frame is still available. Proactive replies created from pulled history do not have that frame and must not promise stream replacement.
+- The system now persists that early @ placeholder in `wecom_reply_sessions`, giving the reconcile path a durable way to finish a previously placeholdered @ reply.
 
 ## Follow-Up Backlog For This Branch
+
+The cross-version roadmap is maintained in [docs/architecture/version-roadmap.md](../../architecture/version-roadmap.md). This backlog only records items discovered while implementing the WeCom reconcile and proactive reply branch.
 
 ### P0: Userid Contract Verification
 
@@ -68,16 +79,26 @@ Goal: make the current successful `userid` path explicit as a required input con
 - Keep real-machine acceptance focused on `messages.userid` being non-empty for user messages pulled by `WeComMcpMessageSource`.
 - Keep Dify output validation strict: every `target_userids` value must come from input `members`.
 - Do not build nickname/text/msgid-based identity inference.
-- If a future WeCom change removes `userid` from history reads, treat it as a platform-contract break for proactive replies, not as a feature fallback to implement in this branch.
+- If a future WeCom change removes `userid` from history reads, log an error with `chatid/msgid/msgtype` and treat it as a platform-contract break for proactive replies.
 
-### P0: Proactive Send Reliability
+### P0: Live Regression And Proactive Send Reliability
 
-Goal: keep the automatic customer-service reply path testable without duplicating WebSocket connections.
+Goal: keep the automatic customer-service reply path testable through real-machine checks without duplicating WebSocket connections.
 
 - Keep `MessageReconcileWorker` responsible for fetching, ingesting, Dify, and creating proactive outbox records.
 - Keep `WeComAiBotLongConnectionWorker` responsible for sending new pending proactive outboxes in `aibot_ws` mode.
-- Add a small retry path for failed proactive outboxes only after defining frequency control, to avoid repeated group messages.
-- Verify outbox status transitions: `pending -> sending -> sent` or `pending -> sending -> failed`.
+- Combine proactive send reliability and live regression into one manual test pass: @ reply, non-@ proactive reply, duplicate-message suppression, bot-message exclusion, invalid Dify output no-send, and `messages.userid` non-empty.
+- Keep automatic retry out of this branch until frequency control is defined, to avoid repeated group messages.
+- Verify outbox status transitions during the manual pass: `pending -> sending -> sent` or `pending -> sending -> failed`.
+
+### P0: Required Next Feature Modules
+
+Goal: raise the AI modules that are necessary for the product experience instead of leaving them as distant follow-ups.
+
+- Prioritize conversation sedimentation / conversation summary as the next Dify-backed module after live regression.
+- Prioritize user profile auto-update as a required Dify-backed module after conversation sedimentation.
+- Prioritize the first frontend interface in the same next-stage plan, because manual verification and operations become inefficient without a UI.
+- Keep module inputs grounded in the current database and system APIs; do not revive the removed old four-workflow Dify contract.
 
 ### P1: Streaming And Placeholder Scope
 
@@ -91,7 +112,9 @@ Goal: avoid over-promising streaming where WeCom does not provide a callback fra
 
 Goal: make troubleshooting tell whether a message is stuck at ingest, Dify, outbox, or send.
 
-- Add a lightweight interaction state view or table after real-machine testing shows the most useful fields.
+- Delay full interaction-state UI until the frontend foundation exists.
+- Before the frontend, rely on structured logs, `ai_runs`, `outbox_messages`, and targeted admin queries for troubleshooting.
+- Add a lightweight interaction state view or table only after real-machine testing and frontend design show the most useful fields.
 - Preserve existing facts in `messages`, `trigger_events`, `ai_runs`, and `outbox_messages`; do not duplicate full payloads into a broad state table without a clear read use case.
 - Add admin queries for recent proactive decisions, invalid Dify outputs, and failed sends.
 
@@ -100,6 +123,7 @@ Goal: make troubleshooting tell whether a message is stuck at ingest, Dify, outb
 Goal: keep the current SQLite/local design simple until load proves otherwise.
 
 - Add Redis recent-processed cache only as an optimization. A cache miss must still fall back to durable database facts.
+- Consider Redis/cache work when frontend usage or production traffic exposes slow reads, repeated expensive queries, or page-load latency.
 - Add per-chat worker locking only if multi-process deployment begins to run the same chatid concurrently.
 - Add a durable queue if retry pressure, ordering pressure, or worker restarts start losing useful work.
 
@@ -867,7 +891,10 @@ Expected:
 - The puller window is 12 seconds by default and uses `last_pulled_at - 2s` when a cursor exists.
 - Every pulled message is ingested before any proactive Dify call.
 - Proactive scan queries `messages` by `chatid + create_time` in SQL and excludes `sender_type != "user"`.
+- Proactive scan also excludes `mentioned_bot = true`; @ messages must not be answered by `chat_proactive_reminder`.
 - Already handled @ messages are passed to Dify as `handled_records`.
+- If a history-pulled duplicate of a handled @ message has only a payload-derived id, it is still marked through `handled_records` by matching the existing mention trigger to the same chat/user/content within a short time window.
+- Dify outputs that try to quote a handled record are rejected and do not create proactive outbox messages.
 - Text-prefix exclusion is not used.
 - Robot and user messages remain in one `messages` table.
 - No new global queue is introduced in this stage.

@@ -5,10 +5,10 @@
 本阶段把已有的单次补漏能力扩展为可长期运行的自动链路：
 
 ```text
-企微历史消息源 -> 短窗口补漏 -> 幂等入库 -> 数据库窗口扫描 -> Dify 主动提醒 -> outbox -> 可选自动发送
+企微历史消息源 -> 短窗口补漏 -> 幂等入库 -> @ 补漏恢复 / 非 @ 主动提醒 -> outbox -> 可选自动发送
 ```
 
-它不替代企业微信智能机器人长连接。长连接仍是实时 @ 回复主链路；补漏 worker 只负责非 @ 消息的主动提醒判断，以及企业微信侧偶发漏投递时的兜底入库。
+它不替代企业微信智能机器人长连接。长连接仍是实时 @ 回复主链路；补漏 worker 负责两件事：企业微信侧偶发漏投递时的兜底入库与 @ 恢复，以及非 @ 消息的主动提醒判断。
 
 ## 模块边界
 
@@ -30,8 +30,11 @@
 - 每次读取 `last_pulled_at - 2s` 到当前时间；没有 cursor 时读取最近 12 秒。
 - 调用真实企微历史消息源读取消息。
 - 先写入数据库，再从数据库窗口构造 Dify 输入。
-- 只扫描 `sender_type = "user"` 的消息。
+- 只扫描 `sender_type = "user"` 且 `mentioned_bot = false` 的消息。
+- 对 `mentioned_bot = true` 且尚未产生回复 outbox 的用户消息，先进入 `mention_recovery`，复用 `group_knowledge_reply` 恢复 @ 语义。
+- 如果长连接已经发出 callback-bound 占位，补漏恢复会通过 `wecom_reply_sessions.frame_json + stream_id` 复用原占位流发送最终答案。
 - 使用 `trigger_events` 生成 `handled_records`，避免重复处理已由 @ 回复处理的消息。
+- 如果历史拉取缺少真实 `msgid`，导致同一条 @ 消息在长连接和补漏侧形成不同 `external_msgid`，系统会用已存在的 mention trigger 事实、同群、同用户、同内容和短时间邻近来补充 `handled_records`；这不是文本前缀排除，而是跨来源已处理事实对齐。
 - 成功后更新 `wecom_mcp_pull_cursors.last_pulled_at`。
 
 ### WeCom History Message Source
@@ -65,7 +68,9 @@ Dify 不直接接收企微拉取结果。Dify 只接收数据库整理后的 pay
 占位与流式边界：
 
 - @ 实时回复可以提前发送占位 stream，因为长连接 worker 持有原始 callback frame。
-- 补漏/主动提醒来自历史消息读取，没有原始 callback frame，不能做同一种可替换的占位 stream。
+- 长连接发出占位后会持久化 `wecom_reply_sessions`，保存短期可复用的 `frame_json`、`stream_id`、消息指纹和最终状态。
+- 补漏拉到未完成的 @ 消息时，如果能匹配到 `wecom_reply_sessions`，可以复用原 callback stream 发最终回复；完全未收到长连接 frame 的 @ 消息只能降级为普通群消息回复。
+- 非 @ 主动提醒来自历史消息读取，没有原始 callback frame，不能做同一种可替换的占位 stream。
 - 补漏主动回复默认保持 blocking：Dify 完成后创建 outbox，再由发送链路一次性推送。
 - 如果未来要在主动提醒前先发“正在处理”类消息，它只是单独群消息，不是流式占位，必须作为产品策略单独评审。
 
@@ -78,15 +83,18 @@ Dify 不直接接收企微拉取结果。Dify 只接收数据库整理后的 pay
 ```text
 messages.sender_type = user | bot | system
 messages.bot_role = reply_bot | intent_bot | unknown_bot | null
+messages.business_identity_key = chatid + userid + canonical_content + 5s bucket
+messages.canonical_message_id = same business message primary id
+mention_requests.business_identity_key = unique @ request claim key
 ```
 
-补漏与长连接可能读取到同一条企微消息，所以真实 `msgid` 必须跨 `source` 幂等。没有真实 `msgid` 的 payload fallback 仍按稳定 hash 去重。
+补漏与长连接可能读取到同一条企微消息。当前 P0 策略是保留跨 source 记录，并用 `business_identity_key/canonical_message_id` 关联；同 source 的重复幂等键或重复 `external_msgid` 仍不重复入库。@ 补漏必须先检查 `mention_requests`，如果已有 `running/completed/outbox_pending/sending/failed/stalled`，不得重跑 Dify。
 
 cursor 规则：
 
 ```text
 cursor_type = message_reconcile
-last_pulled_at 只在“拉取、入库、主动提醒扫描”全部成功后更新
+last_pulled_at 只在“拉取、入库、@ 恢复扫描、主动提醒扫描”全部成功后更新
 ```
 
 如果中途失败，不推进 cursor。下一轮会重新读取重叠窗口，靠幂等避免重复写入和重复发送。
@@ -126,6 +134,8 @@ WECOM_MESSAGE_RECONCILE_OVERLAP_SECONDS=2
 WECOM_MESSAGE_RECONCILE_PAGES=1
 WECOM_MESSAGE_RECONCILE_AUTO_ENQUEUE=true
 WECOM_MESSAGE_RECONCILE_AUTO_SEND=false
+WECOM_MESSAGE_IDENTITY_BUCKET_SECONDS=5
+WECOM_MENTION_REQUEST_STALLED_AFTER_SECONDS=180
 WECOM_MCP_CONFIG_ENDPOINT=https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config
 ```
 
@@ -141,9 +151,14 @@ WECOM_MESSAGE_RECONCILE_CHATIDS=CHAT_A,CHAT_B
 
 - 启用 worker 后，每 10 秒按群短窗口拉取消息。
 - 拉到的消息先入库，再触发主动提醒扫描。
-- 长连接已入库的同一 `msgid` 不会被补漏重复写入。
+- 长连接已入库的同一业务消息被补漏再次看到时，会保留补漏来源记录并关联到同一 `canonical_message_id`，但不会重复触发 Dify。
+- 补漏扫到 `mention_requests.status=running` 的 @ 请求时必须跳过，不创建 `reply_recovery` outbox。
+- Dify running 超过 `WECOM_MENTION_REQUEST_STALLED_AFTER_SECONDS` 时标记 `stalled`，只记录和阻断重复处理，不自动重跑。
 - 实机补漏拉取的用户消息必须能落库为非空 `messages.userid`。
+- 补漏拉到未完成的 @ 消息必须进入 `mention_recovery -> group_knowledge_reply`，不得进入 `chat_proactive_reminder` 主动提醒候选窗口。
+- 已有占位 session 的补漏 @ 回复应优先复用原 callback stream；无占位 session 时允许降级为普通群消息回复。
 - Dify 不能输出不存在于 `members` 的 `target_userids`。
+- Dify 不能引用已在 `handled_records` 中的 `quote_msgid` 创建主动回复。
 - 机器人消息不会进入主动提醒候选窗口。
 - 已由 @ 回复处理的消息会作为 `handled_records` 传给 Dify。
 - `auto_send=false` 时只创建 pending outbox。

@@ -77,7 +77,7 @@ def seed_dashboard_data(client: TestClient):
         json={
             "chatid": "CHAT_A",
             "time_range": {
-                "start": "2026-05-04T00:00:00+08:00",
+                "start": "2026-05-04T01:00:30+08:00",
                 "end": "2026-05-04T02:00:00+08:00",
             },
             "auto_enqueue": True,

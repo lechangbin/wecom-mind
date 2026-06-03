@@ -75,6 +75,12 @@
 - 不重复插入 `messages`。
 - 返回 `duplicated=true`。
 
+跨来源同一业务消息：
+
+- 不再直接吞掉另一来源记录。
+- 使用 `business_identity_key = chatid + userid + canonical_content + 5 秒时间桶` 关联。
+- 后续触发链路以 `mention_requests.business_identity_key` 防止重复 Dify 和重复回复。
+
 ## 5. 处理流程
 
 1. 接收原始消息。
@@ -84,9 +90,10 @@
 5. 解析消息类型。
 6. 提取文本和引用内容。
 7. 写入 `messages`。
-8. 更新 `wecom_chats.last_message_at`。
-9. 更新 `wecom_users.last_active_at`。
-10. 触发 Trigger Router。
+8. 生成 `business_identity_key` 并写入 `canonical_message_id`。
+9. 更新 `wecom_chats.last_message_at`。
+10. 更新 `wecom_users.last_active_at`。
+11. 触发 Trigger Router。
 
 ## 6. MVP 实现范围
 
