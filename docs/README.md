@@ -19,6 +19,7 @@
 - [架构总览](./architecture/README.md)
 - [Dify AI 功能重建架构](./architecture/dify-ai-architecture.html)
 - [数据模型设计](./architecture/data-model.md)
+- [管理员前端 V1 架构](./architecture/admin-frontend-v1.md)
 
 ## 4. 模块实现文档
 

@@ -52,27 +52,16 @@
 阶段 5 智能会话切分：
 
 - ORM 数据表：`conversation_segments`。
-- 应用启动时幂等初始化 `conversation_segmentation/v1` 工作流，`response_mode=blocking`，包含输入和输出 JSON schema。
-- `MockDifyClient` 已按 `workflow_code` 分支：`reply_generation` 负责回复生成，`conversation_segmentation` 基于输入消息窗口返回 mock 会话段建议。
-- `POST /api/conversations/segment/run`：按 `chatid + start_time + end_time` 查询消息窗口，创建 `ai_runs`，调用 Dify client，并校验输出。
-- 会话切分输出校验包括：`start_msgid/end_msgid` 必须存在于输入消息、区间不能交叉、`participants` 必须来自输入消息用户、结构必须符合 schema。
-- Dify 只提供建议，最终 `conversation_no`、边界确认和写库由自建系统完成；当前编号格式为 `conv_YYYYMMDD_xxxxxx`。
-- 同一 `chatid + start_msgid + end_msgid` 重复运行不会重复创建会话段，直接复用已有 `conversation_segments` 记录。
-- 非法输出会将 `ai_runs.status` 置为 `invalid_output`，不会写入 `conversation_segments`。
-- `GET /api/conversations` 支持按 `chatid` 查询会话段列表。
-- `GET /api/conversations/{conversation_no}` 可查询单个会话段详情。
+- 旧 `conversation_segmentation/v1` workflow 注册已不再作为当前主线，应用启动时会删除旧四工作流默认注册。
+- 当前 `src/app/conversations` 代码仍保留历史接口和基础写库能力，但 V0.3 会话沉淀需要按新版契约重建 Dify 输入输出。
+- 新版输入输出结构见 [会话智能模块](./docs/modules/06-conversation-intelligence.md)。
 
 阶段 6 用户画像分析：
 
 - ORM 数据表：`user_profiles`、`user_profile_facts`。
-- 应用启动时幂等初始化 `user_profile_analysis/v1` 工作流，`response_mode=blocking`，包含输入和输出 JSON schema。
-- `MockDifyClient` 已支持 `user_profile_analysis`，会基于输入 `recent_messages` 返回稳定的 mock 画像摘要和事实。
-- `POST /api/profiles/analyze/run`：按 `userid + time_range` 查询用户消息，读取用户参与的会话摘要，读取当前最新画像，创建 `ai_runs`，调用 Dify client，并校验输出。
-- 用户画像输出校验包括：`output.userid` 必须等于输入 `userid`，`evidence_msgids` 必须来自本次输入消息，`evidence_conversation_nos` 必须来自本次输入会话摘要，结构必须符合 schema。
-- 成功时写入新的 `user_profiles` 版本；旧 active 画像会标记为 `superseded`，最新有效画像可按 `userid` 查询。
-- fact 置信度规则：`confidence >= 0.75` 写入 active fact 并进入 `profile_json.facts`；`0.5 <= confidence < 0.75` 写入 low_confidence fact 但不进入核心画像；`confidence < 0.5` 仅保留在 `ai_runs.output_json`。
-- 非法输出会将 `ai_runs.status` 置为 `invalid_output`，不会写入画像或事实。
-- `GET /api/users/{userid}/profile` 可查询最新画像快照和事实。
+- 旧 `user_profile_analysis/v1` workflow 注册已不再作为当前主线，应用启动时会删除旧四工作流默认注册。
+- 当前 `src/app/profiles` 代码仍保留历史接口和基础写库能力，但 V0.3 用户画像更新需要按新版契约重建 Dify 输入输出。
+- 新版输入输出结构见 [用户画像模块](./docs/modules/07-user-profile.md)。
 
 阶段 7 定时意图识别与主动提醒：
 
@@ -392,7 +381,7 @@ Invoke-RestMethod http://127.0.0.1:8000/api/ai-runs
 Invoke-RestMethod "http://127.0.0.1:8000/api/outbox-messages?status=pending&chatid=CHAT_A"
 ```
 
-Dify 边界：默认 `MockDifyClient` 不访问真实 Dify；`reply_generation` 只根据输入消息返回 `action=reply` 的结构化 JSON，`intent_detection` 只根据输入消息和 known_users 生成稳定 mock actions，`conversation_segmentation` 只根据输入消息窗口生成一段 mock 会话建议，`user_profile_analysis` 只根据输入 `recent_messages` 生成稳定 mock 画像。设置 `DIFY_CLIENT_MODE=real` 后使用 `DifyHttpClient` 调用真实 Dify blocking API；业务侧仍保留 `ai_runs` 记录和输出 schema 校验，Dify 不直接写业务库、不直接发送企微消息。
+Dify 边界：默认 `MockDifyClient` 不访问真实 Dify；当前主线的真实 Dify 应用是 `group_knowledge_reply` 和 `chat_proactive_reminder`。设置 `DIFY_CLIENT_MODE=real` 后使用 `DifyHttpClient` 调用真实 Dify blocking API；业务侧仍保留 `ai_runs` 记录和输出 schema 校验，Dify 不直接写业务库、不直接发送企微消息。V0.3 会话沉淀和用户画像更新的新版契约见 [会话智能模块](./docs/modules/06-conversation-intelligence.md) 与 [用户画像模块](./docs/modules/07-user-profile.md)。
 
 用 mock 消息跑定时意图识别并生成主动提醒 outbox：
 
@@ -436,88 +425,7 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/outbox-messages?status=pending&chat
 
 intent_detection 的 mock 边界：当前不会调用真实 Dify，也没有真实定时器；只提供可由 API 手动触发的扫描入口。Dify 输出只作为建议，自建系统负责 target/evidence/reply_instruction 校验、幂等、`scheduled_intents` 写库和 proactive outbox 创建。
 
-用几条 mock 消息跑会话切分：
-
-```powershell
-$messages = @(
-  @{ msgid = "MSG_1"; chatid = "CHAT_A"; userid = "USER_A"; content = "今天先看需求"; create_time = 1777827600 },
-  @{ msgid = "MSG_2"; chatid = "CHAT_A"; userid = "USER_B"; content = "我补一下边界"; create_time = 1777827660 },
-  @{ msgid = "MSG_3"; chatid = "CHAT_A"; userid = "USER_A"; content = "那就按这个窗口切分"; create_time = 1777827720 }
-)
-
-foreach ($m in $messages) {
-  $body = @{
-    source = "mcp"
-    idempotency_key = "mcp_msg_$($m.msgid)"
-    raw_message = @{
-      msgid = $m.msgid
-      chatid = $m.chatid
-      chattype = "group"
-      from = @{ userid = $m.userid }
-      msgtype = "text"
-      text = @{ content = $m.content }
-      create_time = $m.create_time
-    }
-  } | ConvertTo-Json -Depth 8
-
-  Invoke-RestMethod `
-    -Method Post `
-    -Uri "http://127.0.0.1:8000/api/wecom/messages/ingest" `
-    -ContentType "application/json" `
-    -Body $body
-}
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/api/conversations/segment/run" `
-  -ContentType "application/json" `
-  -Body '{"chatid":"CHAT_A","start_time":"2026-05-04T00:00:00+08:00","end_time":"2026-05-04T02:00:00+08:00","mode":"auto"}'
-
-Invoke-RestMethod "http://127.0.0.1:8000/api/conversations?chatid=CHAT_A"
-```
-
-conversation_segmentation 的 mock 边界：当前不会调用真实 Dify，不做复杂人工修正和多轮边界推理，只返回覆盖输入窗口的单段建议；系统仍会校验边界、参与者和区间合法性，并由自建系统生成 `conversation_no` 后写库。
-
-用 mock 消息跑用户画像分析：
-
-```powershell
-$messages = @(
-  @{ msgid = "PROFILE_MSG_1"; chatid = "CHAT_A"; userid = "USER_A"; content = "这个报价和折扣策略怎么定？"; create_time = 1777827600 },
-  @{ msgid = "PROFILE_MSG_2"; chatid = "CHAT_A"; userid = "USER_A"; content = "客户跟进和交付排期今天确认。"; create_time = 1777827660 }
-)
-
-foreach ($m in $messages) {
-  $body = @{
-    source = "mcp"
-    idempotency_key = "mcp_msg_$($m.msgid)"
-    raw_message = @{
-      msgid = $m.msgid
-      chatid = $m.chatid
-      chattype = "group"
-      from = @{ userid = $m.userid }
-      msgtype = "text"
-      text = @{ content = $m.content }
-      create_time = $m.create_time
-    }
-  } | ConvertTo-Json -Depth 8
-
-  Invoke-RestMethod `
-    -Method Post `
-    -Uri "http://127.0.0.1:8000/api/wecom/messages/ingest" `
-    -ContentType "application/json" `
-    -Body $body
-}
-
-Invoke-RestMethod `
-  -Method Post `
-  -Uri "http://127.0.0.1:8000/api/profiles/analyze/run" `
-  -ContentType "application/json" `
-  -Body '{"userid":"USER_A","mode":"incremental","time_range":{"start":"2026-05-04T00:00:00+08:00","end":"2026-05-04T02:00:00+08:00"}}'
-
-Invoke-RestMethod "http://127.0.0.1:8000/api/users/USER_A/profile"
-```
-
-user_profile_analysis 的 mock 边界：当前不会调用真实 Dify，不做画像冲突合并、事实过期和人工审核；Dify 输出只作为建议，自建系统负责 userid/evidence/置信度规则校验、版本号生成和写库。
+会话沉淀和用户画像更新不再提供旧 mock 快速示例。当前阶段先以模块文档冻结输入输出，再按新版 Dify `payload` 契约补齐实现与测试。
 
 手动创建并发送 outbox：
 
@@ -632,4 +540,4 @@ tests/
 
 ## 下一阶段怎么继续
 
-当前主线以 [版本路线图](./docs/architecture/version-roadmap.md) 为准。先完成 `v0.2.1` P0 消息系统架构修复：@ 请求认领、跨来源消息归并、AI 执行状态判断、占位 stream 生命周期保护；实机回归作为该阶段验收。随后进入 `v0.3` 必需功能模块：会话沉淀/会话摘要、用户画像自动更新、第一版前端界面。Dify streaming 只考虑 @ 实时回复；非 @ 主动回复继续 blocking。Redis、持久队列、分布式锁和复杂频控等生产化优化后置，等前端使用或真实流量暴露性能瓶颈后再做。
+当前主线以 [版本路线图](./docs/architecture/version-roadmap.md) 为准。`v0.2.1` P0 消息系统架构修复已发布：@ 请求认领、跨来源消息归并、AI 执行状态判断、占位 stream 生命周期保护已经进入稳定实机链路。下一阶段进入 `v0.3` 必需功能模块，具体编排见 [V0.3 AI 记忆工作流编排计划](./docs/architecture/v0.3-ai-memory-workflow-plan.md)：每日会话切分、用户画像异步更新、回复工作流画像化、第一版前端界面。Dify streaming 只考虑 @ 实时回复；非 @ 主动回复继续 blocking。Redis、持久队列、分布式锁和复杂频控等生产化优化后置，等前端使用或真实流量暴露性能瓶颈后再做。

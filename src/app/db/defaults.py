@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db.models import AiWorkflow, TriggerRule
 from app.dify.schemas import (
     CHAT_PROACTIVE_REMINDER_OUTPUT_SCHEMA,
+    CONVERSATION_BOUNDARY_DETECTION_OUTPUT_SCHEMA,
     GROUP_KNOWLEDGE_REPLY_OUTPUT_SCHEMA,
     PAYLOAD_ONLY_INPUT_SCHEMA,
+    USER_PROFILE_UPDATE_OUTPUT_SCHEMA,
 )
 
 
@@ -15,6 +17,8 @@ def initialize_default_records(session_factory: sessionmaker[Session]) -> None:
         _ensure_default_mention_rule(session)
         _ensure_default_group_knowledge_reply_workflow(session)
         _ensure_default_chat_proactive_reminder_workflow(session)
+        _ensure_default_conversation_boundary_detection_workflow(session)
+        _ensure_default_user_profile_update_workflow(session)
         session.commit()
 
 
@@ -87,6 +91,74 @@ def _ensure_default_group_knowledge_reply_workflow(session: Session) -> None:
             response_mode="blocking",
             input_schema=PAYLOAD_ONLY_INPUT_SCHEMA,
             output_schema=GROUP_KNOWLEDGE_REPLY_OUTPUT_SCHEMA,
+            enabled=True,
+        )
+    )
+
+
+def _ensure_default_conversation_boundary_detection_workflow(session: Session) -> None:
+    existing = session.scalar(
+        select(AiWorkflow).where(
+            AiWorkflow.workflow_code == "conversation_boundary_detection",
+            AiWorkflow.version == "v1",
+        )
+    )
+    if existing:
+        existing.workflow_name = "每日会话切分边界检测"
+        existing.dify_app_id = "conversation_boundary_detection"
+        existing.dify_workflow_id = None
+        existing.response_mode = "blocking"
+        existing.input_schema = PAYLOAD_ONLY_INPUT_SCHEMA
+        existing.output_schema = CONVERSATION_BOUNDARY_DETECTION_OUTPUT_SCHEMA
+        existing.enabled = True
+        return
+
+    session.add(
+        AiWorkflow(
+            workflow_code="conversation_boundary_detection",
+            workflow_name="每日会话切分边界检测",
+            provider="dify",
+            dify_app_id="conversation_boundary_detection",
+            dify_workflow_id=None,
+            dify_webhook_url=None,
+            version="v1",
+            response_mode="blocking",
+            input_schema=PAYLOAD_ONLY_INPUT_SCHEMA,
+            output_schema=CONVERSATION_BOUNDARY_DETECTION_OUTPUT_SCHEMA,
+            enabled=True,
+        )
+    )
+
+
+def _ensure_default_user_profile_update_workflow(session: Session) -> None:
+    existing = session.scalar(
+        select(AiWorkflow).where(
+            AiWorkflow.workflow_code == "user_profile_update",
+            AiWorkflow.version == "v1",
+        )
+    )
+    if existing:
+        existing.workflow_name = "单会话用户画像更新"
+        existing.dify_app_id = "user_profile_update"
+        existing.dify_workflow_id = None
+        existing.response_mode = "blocking"
+        existing.input_schema = PAYLOAD_ONLY_INPUT_SCHEMA
+        existing.output_schema = USER_PROFILE_UPDATE_OUTPUT_SCHEMA
+        existing.enabled = True
+        return
+
+    session.add(
+        AiWorkflow(
+            workflow_code="user_profile_update",
+            workflow_name="单会话用户画像更新",
+            provider="dify",
+            dify_app_id="user_profile_update",
+            dify_workflow_id=None,
+            dify_webhook_url=None,
+            version="v1",
+            response_mode="blocking",
+            input_schema=PAYLOAD_ONLY_INPUT_SCHEMA,
+            output_schema=USER_PROFILE_UPDATE_OUTPUT_SCHEMA,
             enabled=True,
         )
     )

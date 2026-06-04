@@ -6,6 +6,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.admin_analytics import router as admin_analytics_router
 from app.api.ai_runs import router as ai_runs_router
+from app.api.ai_memory import router as ai_memory_router
+from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
 from app.api.outbox import router as outbox_router
 from app.api.proactive_replies import router as proactive_replies_router
@@ -60,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proactive_replies_router)
     app.include_router(scheduled_intents_router)
     app.include_router(admin_analytics_router)
+    app.include_router(conversations_router)
+    app.include_router(ai_memory_router)
 
     return app
 

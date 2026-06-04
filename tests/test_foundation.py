@@ -78,12 +78,24 @@ def test_message_reconcile_defaults_are_short_window():
     assert settings.wecom_mcp_config_endpoint == (
         "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
     )
+    assert settings.ai_memory_full_test_enabled is False
+    assert settings.ai_memory_full_test_chatids is None
+    assert settings.ai_memory_full_test_chatid_list == []
+    assert settings.ai_memory_full_test_interval_seconds == 86400
+    assert settings.ai_memory_full_test_days_back == 1
+    assert settings.ai_memory_full_test_run_profiles is True
 
 
 def test_message_reconcile_chatid_list_parses_csv():
     settings = Settings(wecom_message_reconcile_chatids=" CHAT_A,CHAT_B ,, CHAT_C ")
 
     assert settings.message_reconcile_chatid_list == ["CHAT_A", "CHAT_B", "CHAT_C"]
+
+
+def test_ai_memory_full_test_chatid_list_parses_csv():
+    settings = Settings(ai_memory_full_test_chatids=" CHAT_A,CHAT_B ,, CHAT_C ")
+
+    assert settings.ai_memory_full_test_chatid_list == ["CHAT_A", "CHAT_B", "CHAT_C"]
 
 
 def test_response_helpers_include_request_id():

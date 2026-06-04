@@ -118,10 +118,11 @@ function Get-DotEnvValue {
     return (($line -split "=", 2)[1]).Trim().Trim('"').Trim("'")
 }
 
-if (-not $NoStopExisting) {
+if (-not $NoStopExisting -and -not $DryRun) {
     Stop-ExistingProjectProcess "uvicorn app\.main:app"
     Stop-ExistingProjectProcess "scripts\\run_wecom_aibot_worker\.py"
     Stop-ExistingProjectProcess "scripts\\run_message_reconcile_worker\.py"
+    Stop-ExistingProjectProcess "scripts\\run_ai_memory_full_test_worker\.py"
     Start-Sleep -Seconds 1
 }
 
@@ -131,6 +132,8 @@ $WorkerOut = Join-Path $Logs "wecom-aibot-worker.out.log"
 $WorkerErr = Join-Path $Logs "wecom-aibot-worker.err.log"
 $ReconcileOut = Join-Path $Logs "message-reconcile-worker.out.log"
 $ReconcileErr = Join-Path $Logs "message-reconcile-worker.err.log"
+$AiMemoryOut = Join-Path $Logs "ai-memory-full-test-worker.out.log"
+$AiMemoryErr = Join-Path $Logs "ai-memory-full-test-worker.err.log"
 
 $Api = Start-ServiceProcess `
     -Name "API" `
@@ -158,6 +161,20 @@ if ($ReconcileEnabled -and $ReconcileEnabled.ToLowerInvariant() -eq "true") {
         -ErrLog $ReconcileErr
 }
 
+$AiMemoryEnabled = $env:AI_MEMORY_FULL_TEST_ENABLED
+if (-not $AiMemoryEnabled) {
+    $AiMemoryEnabled = Get-DotEnvValue "AI_MEMORY_FULL_TEST_ENABLED"
+}
+
+$AiMemory = $null
+if ($AiMemoryEnabled -and $AiMemoryEnabled.ToLowerInvariant() -eq "true") {
+    $AiMemory = Start-ServiceProcess `
+        -Name "AI memory full-test worker" `
+        -Arguments @("scripts\run_ai_memory_full_test_worker.py") `
+        -OutLog $AiMemoryOut `
+        -ErrLog $AiMemoryErr
+}
+
 if ($DryRun) {
     Write-Host "Dry run complete."
     exit 0
@@ -174,6 +191,11 @@ if ($Reconcile) {
 } else {
     Write-Host "  Reconcile worker: disabled"
 }
+if ($AiMemory) {
+    Write-Host "  AI memory PID: $($AiMemory.Process.Id)"
+} else {
+    Write-Host "  AI memory worker: disabled"
+}
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  API stdout:    $($Api.OutLog)"
@@ -183,4 +205,8 @@ Write-Host "  Worker stderr: $($Worker.ErrLog)"
 if ($Reconcile) {
     Write-Host "  Reconcile stdout: $($Reconcile.OutLog)"
     Write-Host "  Reconcile stderr: $($Reconcile.ErrLog)"
+}
+if ($AiMemory) {
+    Write-Host "  AI memory stdout: $($AiMemory.OutLog)"
+    Write-Host "  AI memory stderr: $($AiMemory.ErrLog)"
 }
