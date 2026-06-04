@@ -1,0 +1,1139 @@
+version: 0.6.0
+kind: app
+app:
+  name: user_profile_update
+  mode: workflow
+  icon: 🧠
+  icon_background: '#EDE7F6'
+  icon_type: emoji
+  description: 用户画像更新：接收一个会话的全部消息、目标用户和该用户原画像，输出更新后的完整画像和本次变更说明。
+  use_icon_as_answer_icon: false
+dependencies: []
+workflow:
+  environment_variables: []
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - id: 1764811001001-source-1764811002001-target
+      source: '1764811001001'
+      sourceHandle: source
+      target: '1764811002001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811002001-source-1764811002101-target
+      source: '1764811002001'
+      sourceHandle: source
+      target: '1764811002101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811002101-false-1764811005901-target
+      source: '1764811002101'
+      sourceHandle: 'false'
+      target: '1764811005901'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811002101-true-1764811003001-target
+      source: '1764811002101'
+      sourceHandle: 'true'
+      target: '1764811003001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811003001-source-1764811004001-target
+      source: '1764811003001'
+      sourceHandle: source
+      target: '1764811004001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004001-source-1764811004101-target
+      source: '1764811004001'
+      sourceHandle: source
+      target: '1764811004101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004101-true-1764811005101-target
+      source: '1764811004101'
+      sourceHandle: 'true'
+      target: '1764811005101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004101-false-1764811004201-target
+      source: '1764811004101'
+      sourceHandle: 'false'
+      target: '1764811004201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004201-source-1764811004301-target
+      source: '1764811004201'
+      sourceHandle: source
+      target: '1764811004301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004301-source-1764811004401-target
+      source: '1764811004301'
+      sourceHandle: source
+      target: '1764811004401'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004401-true-1764811005201-target
+      source: '1764811004401'
+      sourceHandle: 'true'
+      target: '1764811005201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004401-false-1764811004501-target
+      source: '1764811004401'
+      sourceHandle: 'false'
+      target: '1764811004501'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004501-source-1764811004601-target
+      source: '1764811004501'
+      sourceHandle: source
+      target: '1764811004601'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764811004601-source-1764811005301-target
+      source: '1764811004601'
+      sourceHandle: source
+      target: '1764811005301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    nodes:
+    - id: '1764811001001'
+      type: custom
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: start
+        title: 开始：接收画像更新 payload
+        desc: 接收自建系统传入的 conversation、目标 userid、会话全部消息、目标用户消息和原画像；本节点不写库。
+        variables:
+        - variable: payload
+          label: 画像更新 payload
+          type: json_object
+          required: true
+          hint: 包含 userid、conversation、messages、target_user_messages、current_profile、runtime。
+    - id: '1764811002001'
+      type: custom
+      position:
+        x: 380
+        y: 282
+      positionAbsolute:
+        x: 380
+        y: 282
+      width: 244
+      height: 140
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：提取画像上下文
+        desc: 提取目标用户、会话、消息和原画像，生成 msgid 与 fact_id 白名单；输入无效时输出 no_change 标准结构。
+        code_language: python3
+        variables:
+        - variable: payload
+          value_selector:
+          - '1764811001001'
+          - payload
+          value_type: object
+        code: "import json\n\nRETRY_TEMPLATE = json.dumps({\n    \"userid\": \"必须等于输入 userid\",\n    \"profile_action\": \"\
+          create 或 update 或 no_change\",\n    \"updated_profile\": {\"summary\": \"\", \"facts\": []},\n    \"changes\": {\"\
+          facts_added\": [], \"facts_updated\": [], \"facts_retired\": []},\n    \"evidence\": {\"conversation_no\": \"\"\
+          , \"msgids\": []},\n    \"confidence\": 0.0\n}, ensure_ascii=False, indent=2)\n\ndef _as_dict(value):\n    if isinstance(value,\
+          \ dict):\n        return value\n    if isinstance(value, str):\n        try:\n            parsed = json.loads(value)\n\
+          \            return parsed if isinstance(parsed, dict) else {}\n        except Exception:\n            return {}\n\
+          \    return {}\n\ndef _safe_list(value):\n    return value if isinstance(value, list) else []\n\ndef _text(value):\n\
+          \    return value.strip() if isinstance(value, str) and value.strip() else \"\"\n\ndef _fact_id(fact):\n    obj\
+          \ = _as_dict(fact)\n    return _text(obj.get(\"fact_id\") or obj.get(\"id\"))\n\ndef _no_change(userid, conversation_no,\
+          \ reason):\n    return {\n        \"input_valid\": False,\n        \"userid\": userid,\n        \"profile_action\"\
+          : \"no_change\",\n        \"updated_profile\": {\"summary\": \"\", \"facts\": []},\n        \"changes\": {\"facts_added\"\
+          : [], \"facts_updated\": [], \"facts_retired\": []},\n        \"evidence\": {\"conversation_no\": conversation_no,\
+          \ \"msgids\": []},\n        \"confidence\": 0.0,\n        \"context_json\": \"{}\",\n        \"valid_msgids\": [],\n\
+          \        \"target_msgids\": [],\n        \"valid_fact_ids\": [],\n        \"conversation_no\": conversation_no,\n\
+          \        \"error_reason\": reason,\n        \"retry_template\": RETRY_TEMPLATE,\n    }\n\ndef main(payload: dict)\
+          \ -> dict:\n    data = _as_dict(payload)\n    userid = _text(data.get(\"userid\"))\n    conversation = _as_dict(data.get(\"\
+          conversation\"))\n    conversation_no = _text(conversation.get(\"conversation_no\"))\n    messages = _safe_list(data.get(\"\
+          messages\"))\n    target_messages = _safe_list(data.get(\"target_user_messages\"))\n    current_profile = _as_dict(data.get(\"\
+          current_profile\"))\n    if not userid:\n        return _no_change(\"\", conversation_no, \"payload.userid 缺失\"\
+          )\n    if not conversation_no:\n        return _no_change(userid, \"\", \"conversation.conversation_no 缺失\")\n\n\
+          \    normalized_messages = []\n    valid_msgids = []\n    for index, item in enumerate(messages):\n        msg =\
+          \ _as_dict(item)\n        msgid = _text(msg.get(\"msgid\"))\n        if not msgid:\n            return _no_change(userid,\
+          \ conversation_no, f\"messages[{index}].msgid 缺失\")\n        valid_msgids.append(msgid)\n        normalized_messages.append({\n\
+          \            \"message_id\": str(msg.get(\"message_id\") or \"\"),\n            \"msgid\": msgid,\n            \"\
+          chatid\": _text(msg.get(\"chatid\")),\n            \"userid\": _text(msg.get(\"userid\")),\n            \"sender_type\"\
+          : _text(msg.get(\"sender_type\") or \"user\"),\n            \"bot_role\": msg.get(\"bot_role\"),\n            \"\
+          msgtype\": _text(msg.get(\"msgtype\") or \"text\"),\n            \"content\": _text(msg.get(\"content\") or msg.get(\"\
+          content_text\")),\n            \"quote_msgid\": msg.get(\"quote_msgid\"),\n            \"mentioned_bot\": bool(msg.get(\"\
+          mentioned_bot\")),\n            \"create_time\": _text(msg.get(\"create_time\")),\n        })\n\n    target_msgids\
+          \ = []\n    for item in target_messages:\n        msgid = _text(_as_dict(item).get(\"msgid\"))\n        if msgid:\n\
+          \            target_msgids.append(msgid)\n\n    current_facts = _safe_list(current_profile.get(\"facts\"))\n   \
+          \ valid_fact_ids = [fact_id for fact_id in (_fact_id(f) for f in current_facts) if fact_id]\n    context = {\n \
+          \       \"userid\": userid,\n        \"conversation\": conversation,\n        \"messages\": normalized_messages,\n\
+          \        \"target_user_messages\": target_messages,\n        \"current_profile\": current_profile,\n        \"policy\"\
+          : {\n            \"target_userid_only\": True,\n            \"prefer_direct_evidence_from_target_user\": True,\n\
+          \            \"context_inferred_requires_lower_confidence\": True,\n            \"do_not_invent_userid_msgid_conversation_no_or_fact_id\"\
+          : True\n        }\n    }\n    return {\n        \"input_valid\": True,\n        \"userid\": userid,\n        \"\
+          profile_action\": \"no_change\",\n        \"updated_profile\": {\"summary\": current_profile.get(\"summary\") or\
+          \ \"\", \"facts\": current_facts},\n        \"changes\": {\"facts_added\": [], \"facts_updated\": [], \"facts_retired\"\
+          : []},\n        \"evidence\": {\"conversation_no\": conversation_no, \"msgids\": []},\n        \"confidence\": 0.0,\n\
+          \        \"context_json\": json.dumps(context, ensure_ascii=False, separators=(\",\", \":\")),\n        \"valid_msgids\"\
+          : valid_msgids,\n        \"target_msgids\": target_msgids,\n        \"valid_fact_ids\": valid_fact_ids,\n      \
+          \  \"conversation_no\": conversation_no,\n        \"error_reason\": \"\",\n        \"retry_template\": RETRY_TEMPLATE,\n\
+          \    }\n"
+        outputs:
+          input_valid:
+            type: boolean
+            children: null
+          userid:
+            type: string
+            children: null
+          profile_action:
+            type: string
+            children: null
+          updated_profile:
+            type: object
+            children: null
+          changes:
+            type: object
+            children: null
+          evidence:
+            type: object
+            children: null
+          confidence:
+            type: number
+            children: null
+          context_json:
+            type: string
+            children: null
+          valid_msgids:
+            type: array[string]
+            children: null
+          target_msgids:
+            type: array[string]
+            children: null
+          valid_fact_ids:
+            type: array[string]
+            children: null
+          conversation_no:
+            type: string
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+    - id: '1764811002101'
+      type: custom
+      position:
+        x: 680
+        y: 282
+      positionAbsolute:
+        x: 680
+        y: 282
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：画像输入是否有效
+        desc: userid、conversation_no、消息证据存在时进入大模型；否则返回 no_change。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: profile-input-valid
+            varType: boolean
+            variable_selector:
+            - '1764811002001'
+            - input_valid
+            comparison_operator: is
+            value: true
+    - id: '1764811005901'
+      type: custom
+      position:
+        x: 980
+        y: 520
+      positionAbsolute:
+        x: 980
+        y: 520
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：输入无效返回 no_change
+        desc: 输入缺少 userid 或 conversation_no 时，返回标准 no_change；自建系统记录错误日志。
+        outputs:
+        - variable: userid
+          value_selector:
+          - '1764811002001'
+          - userid
+          value_type: string
+        - variable: profile_action
+          value_selector:
+          - '1764811002001'
+          - profile_action
+          value_type: string
+        - variable: updated_profile
+          value_selector:
+          - '1764811002001'
+          - updated_profile
+          value_type: object
+        - variable: changes
+          value_selector:
+          - '1764811002001'
+          - changes
+          value_type: object
+        - variable: evidence
+          value_selector:
+          - '1764811002001'
+          - evidence
+          value_type: object
+        - variable: confidence
+          value_selector:
+          - '1764811002001'
+          - confidence
+          value_type: number
+    - id: '1764811003001'
+      type: custom
+      position:
+        x: 980
+        y: 120
+      positionAbsolute:
+        x: 980
+        y: 120
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 1 次生成更新画像
+        desc: 第 1 次尝试基于一个会话和目标用户原画像生成更新后的完整画像与变更说明。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.15
+            max_tokens: 2200
+        prompt_template:
+        - role: system
+          text: "你是企业微信用户画像更新 AI 节点，只负责根据一个会话更新一个目标用户画像。\n\n只能输出合法 JSON，不要在 JSON 外输出解释性自然语言。\n\n硬性规则：\n- userid 必须等于输入 userid。\n\
+            - 只能使用输入中的 msgid、conversation_no、fact_id。\n- 画像事实优先基于目标用户自己的消息。\n- 如果事实只能由他人消息或机器人回复推断，source 必须为 context_inferred，confidence\
+            \ 应保守。\n- 不负责写库、版本冲突、并发控制、幂等或重试。\n\n输出结构：\n{\n  \"userid\": \"输入 userid\",\n  \"profile_action\": \"create | update\
+            \ | no_change\",\n  \"updated_profile\": {\n    \"summary\": \"更新后的完整画像摘要\",\n    \"facts\": [\n      {\n    \
+            \    \"fact_id\": \"旧事实可保留原 fact_id；新增事实可不填或为空\",\n        \"fact_type\": \"interest | preference | role | business_need\
+            \ | communication_style | risk | personal_info | constraint | other\",\n        \"label\": \"标签\",\n        \"\
+            description\": \"描述\",\n        \"evidence_msgids\": [\"输入中存在的 msgid\"],\n        \"evidence_conversation_nos\"\
+            : [\"输入 conversation_no\"],\n        \"source\": \"direct | context_inferred\",\n        \"confidence\": 0 到 1,\n\
+            \        \"status\": \"active 或 low_confidence\"\n      }\n    ]\n  },\n  \"changes\": {\n    \"facts_added\"\
+            : [],\n    \"facts_updated\": [],\n    \"facts_retired\": []\n  },\n  \"evidence\": {\n    \"conversation_no\"\
+            : \"输入 conversation_no\",\n    \"msgids\": [\"输入中存在的 msgid\"]\n  },\n  \"confidence\": 0 到 1\n}"
+        - role: user
+          text: '画像更新上下文 JSON：
+
+            {{#1764811002001.context_json#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764811004001'
+      type: custom
+      position:
+        x: 1280
+        y: 120
+      positionAbsolute:
+        x: 1280
+        y: 120
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 1 次画像 JSON
+        desc: 校验 userid、conversation_no、证据 msgid、direct 证据和 fact_id；失败时输出错误原因和修复模板。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764811003001'
+          - text
+          value_type: string
+        - variable: userid
+          value_selector:
+          - '1764811002001'
+          - userid
+          value_type: string
+        - variable: conversation_no
+          value_selector:
+          - '1764811002001'
+          - conversation_no
+          value_type: string
+        - variable: valid_msgids
+          value_selector:
+          - '1764811002001'
+          - valid_msgids
+          value_type: array[string]
+        - variable: target_msgids
+          value_selector:
+          - '1764811002001'
+          - target_msgids
+          value_type: array[string]
+        - variable: valid_fact_ids
+          value_selector:
+          - '1764811002001'
+          - valid_fact_ids
+          value_type: array[string]
+        - variable: retry_template
+          value_selector:
+          - '1764811002001'
+          - retry_template
+          value_type: string
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _list(value):\n    return value if isinstance(value,\
+          \ list) else []\n\ndef _invalid(reason, userid, conversation_no, retry_template):\n    return {\n        \"userid\"\
+          : userid,\n        \"profile_action\": \"no_change\",\n        \"updated_profile\": {\"summary\": \"\", \"facts\"\
+          : []},\n        \"changes\": {\"facts_added\": [], \"facts_updated\": [], \"facts_retired\": []},\n        \"evidence\"\
+          : {\"conversation_no\": conversation_no, \"msgids\": []},\n        \"confidence\": 0.0,\n        \"is_valid\": False,\n\
+          \        \"error_reason\": reason,\n        \"retry_template\": retry_template,\n        \"raw_output\": \"\",\n\
+          \    }\n\ndef _check_msgids(values, allowed, field, retry_template, userid, conversation_no):\n    if not isinstance(values,\
+          \ list):\n        return f\"{field} 必须是数组\"\n    for msgid in values:\n        if not isinstance(msgid, str) or\
+          \ msgid not in allowed:\n            return f\"{field} 包含输入中不存在的 msgid: {msgid}\"\n    return \"\"\n\ndef _check_fact_list(facts,\
+          \ allowed_msgids, target_msgids, allowed_fact_ids, conversation_no, retry_template, userid):\n    if not isinstance(facts,\
+          \ list):\n        return \"updated_profile.facts 必须是数组\"\n    for i, fact in enumerate(facts):\n        if not isinstance(fact,\
+          \ dict):\n            return f\"updated_profile.facts[{i}] 必须是对象\"\n        fact_id = fact.get(\"fact_id\")\n  \
+          \      if fact_id not in (None, \"\") and fact_id not in allowed_fact_ids:\n            return f\"updated_profile.facts[{i}].fact_id\
+          \ 不在 current_profile.facts 中\"\n        evidence_msgids = fact.get(\"evidence_msgids\")\n        err = _check_msgids(evidence_msgids,\
+          \ allowed_msgids, f\"updated_profile.facts[{i}].evidence_msgids\", retry_template, userid, conversation_no)\n  \
+          \      if err:\n            return err\n        convs = fact.get(\"evidence_conversation_nos\")\n        if not\
+          \ isinstance(convs, list) or any(c != conversation_no for c in convs):\n            return f\"updated_profile.facts[{i}].evidence_conversation_nos\
+          \ 必须只包含输入 conversation_no\"\n        source = fact.get(\"source\")\n        if source not in (\"direct\", \"context_inferred\"\
+          ):\n            return f\"updated_profile.facts[{i}].source 必须是 direct 或 context_inferred\"\n        if source ==\
+          \ \"direct\" and not any(msgid in target_msgids for msgid in evidence_msgids):\n            return f\"updated_profile.facts[{i}]\
+          \ source=direct 时必须包含目标用户自己的证据消息\"\n        confidence = _num(fact.get(\"confidence\"))\n        if confidence is\
+          \ None:\n            return f\"updated_profile.facts[{i}].confidence 必须是数字\"\n    return \"\"\n\ndef main(llm_text:\
+          \ str, userid: str, conversation_no: str, valid_msgids: list, target_msgids: list, valid_fact_ids: list, retry_template:\
+          \ str) -> dict:\n    data, parse_error = _parse(llm_text)\n    if not isinstance(data, dict):\n        return _invalid(parse_error\
+          \ or \"模型输出不是 JSON 对象\", userid, conversation_no, retry_template)\n    if data.get(\"userid\") != userid:\n    \
+          \    return _invalid(\"output.userid 必须等于输入 userid\", userid, conversation_no, retry_template)\n    if data.get(\"\
+          profile_action\") not in (\"create\", \"update\", \"no_change\"):\n        return _invalid(\"profile_action 必须是\
+          \ create、update 或 no_change\", userid, conversation_no, retry_template)\n    updated_profile = data.get(\"updated_profile\"\
+          )\n    changes = data.get(\"changes\")\n    evidence = data.get(\"evidence\")\n    confidence = _num(data.get(\"\
+          confidence\"))\n    if not isinstance(updated_profile, dict):\n        return _invalid(\"updated_profile 必须是对象\"\
+          , userid, conversation_no, retry_template)\n    if not isinstance(changes, dict):\n        return _invalid(\"changes\
+          \ 必须是对象\", userid, conversation_no, retry_template)\n    if not isinstance(evidence, dict):\n        return _invalid(\"\
+          evidence 必须是对象\", userid, conversation_no, retry_template)\n    if confidence is None:\n        return _invalid(\"\
+          confidence 必须是 0 到 1 的数字\", userid, conversation_no, retry_template)\n    if evidence.get(\"conversation_no\") !=\
+          \ conversation_no:\n        return _invalid(\"evidence.conversation_no 必须等于输入 conversation_no\", userid, conversation_no,\
+          \ retry_template)\n    allowed_msgids = set(valid_msgids or [])\n    target_set = set(target_msgids or [])\n   \
+          \ allowed_fact_ids = set(valid_fact_ids or [])\n    err = _check_msgids(evidence.get(\"msgids\"), allowed_msgids,\
+          \ \"evidence.msgids\", retry_template, userid, conversation_no)\n    if err:\n        return _invalid(err, userid,\
+          \ conversation_no, retry_template)\n    err = _check_fact_list(updated_profile.get(\"facts\"), allowed_msgids, target_set,\
+          \ allowed_fact_ids, conversation_no, retry_template, userid)\n    if err:\n        return _invalid(err, userid,\
+          \ conversation_no, retry_template)\n    for field in (\"facts_updated\", \"facts_retired\"):\n        for i, item\
+          \ in enumerate(_list(changes.get(field))):\n            if not isinstance(item, dict):\n                return _invalid(f\"\
+          changes.{field}[{i}] 必须是对象\", userid, conversation_no, retry_template)\n            fact_id = item.get(\"fact_id\"\
+          )\n            if fact_id not in allowed_fact_ids:\n                return _invalid(f\"changes.{field}[{i}].fact_id\
+          \ 不在 current_profile.facts 中\", userid, conversation_no, retry_template)\n    return {\n        \"userid\": userid,\n\
+          \        \"profile_action\": data[\"profile_action\"],\n        \"updated_profile\": updated_profile,\n        \"\
+          changes\": changes,\n        \"evidence\": evidence,\n        \"confidence\": confidence,\n        \"is_valid\"\
+          : True,\n        \"error_reason\": \"\",\n        \"retry_template\": retry_template,\n        \"raw_output\": llm_text\
+          \ or \"\",\n    }"
+        outputs:
+          userid:
+            type: string
+            children: null
+          profile_action:
+            type: string
+            children: null
+          updated_profile:
+            type: object
+            children: null
+          changes:
+            type: object
+            children: null
+          evidence:
+            type: object
+            children: null
+          confidence:
+            type: number
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+          raw_output:
+            type: string
+            children: null
+    - id: '1764811004101'
+      type: custom
+      position:
+        x: 1580
+        y: 120
+      positionAbsolute:
+        x: 1580
+        y: 120
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 1 次画像 JSON 是否有效
+        desc: 如果第 1 次校验通过则结束；否则进入第 1 次修复。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: profile-valid-1
+            varType: boolean
+            variable_selector:
+            - '1764811004001'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764811005101'
+      type: custom
+      position:
+        x: 1880
+        y: 20
+      positionAbsolute:
+        x: 1880
+        y: 20
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 1 次画像结果
+        desc: 第 1 次画像输出有效，返回正式画像字段；自建系统继续校验版本、写库和状态机。
+        outputs:
+        - variable: userid
+          value_selector:
+          - '1764811004001'
+          - userid
+          value_type: string
+        - variable: profile_action
+          value_selector:
+          - '1764811004001'
+          - profile_action
+          value_type: string
+        - variable: updated_profile
+          value_selector:
+          - '1764811004001'
+          - updated_profile
+          value_type: object
+        - variable: changes
+          value_selector:
+          - '1764811004001'
+          - changes
+          value_type: object
+        - variable: evidence
+          value_selector:
+          - '1764811004001'
+          - evidence
+          value_type: object
+        - variable: confidence
+          value_selector:
+          - '1764811004001'
+          - confidence
+          value_type: number
+    - id: '1764811004201'
+      type: custom
+      position:
+        x: 1880
+        y: 280
+      positionAbsolute:
+        x: 1880
+        y: 280
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 2 次修复画像 JSON
+        desc: 第 1 次修复；带上错误原因和原始输出，要求模型重新生成合法画像 JSON。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.15
+            max_tokens: 2200
+        prompt_template:
+        - role: system
+          text: '你正在修复用户画像更新 JSON。只能输出合法 JSON，不要解释。
+
+            必须使用输入 userid、conversation_no、msgid、fact_id，不能编造。'
+        - role: user
+          text: '原始上下文：
+
+            {{#1764811002001.context_json#}}
+
+
+            上一次错误原因：
+
+            {{#1764811004001.error_reason#}}
+
+
+            上一次原始输出：
+
+            {{#1764811004001.raw_output#}}
+
+
+            必须使用此模板：
+
+            {{#1764811004001.retry_template#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764811004301'
+      type: custom
+      position:
+        x: 2180
+        y: 280
+      positionAbsolute:
+        x: 2180
+        y: 280
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 2 次画像 JSON
+        desc: 校验第 1 次修复结果；失败时继续输出错误原因给最后一次修复。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764811004201'
+          - text
+          value_type: string
+        - variable: userid
+          value_selector:
+          - '1764811002001'
+          - userid
+          value_type: string
+        - variable: conversation_no
+          value_selector:
+          - '1764811002001'
+          - conversation_no
+          value_type: string
+        - variable: valid_msgids
+          value_selector:
+          - '1764811002001'
+          - valid_msgids
+          value_type: array[string]
+        - variable: target_msgids
+          value_selector:
+          - '1764811002001'
+          - target_msgids
+          value_type: array[string]
+        - variable: valid_fact_ids
+          value_selector:
+          - '1764811002001'
+          - valid_fact_ids
+          value_type: array[string]
+        - variable: retry_template
+          value_selector:
+          - '1764811002001'
+          - retry_template
+          value_type: string
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _list(value):\n    return value if isinstance(value,\
+          \ list) else []\n\ndef _invalid(reason, userid, conversation_no, retry_template):\n    return {\n        \"userid\"\
+          : userid,\n        \"profile_action\": \"no_change\",\n        \"updated_profile\": {\"summary\": \"\", \"facts\"\
+          : []},\n        \"changes\": {\"facts_added\": [], \"facts_updated\": [], \"facts_retired\": []},\n        \"evidence\"\
+          : {\"conversation_no\": conversation_no, \"msgids\": []},\n        \"confidence\": 0.0,\n        \"is_valid\": False,\n\
+          \        \"error_reason\": reason,\n        \"retry_template\": retry_template,\n        \"raw_output\": \"\",\n\
+          \    }\n\ndef _check_msgids(values, allowed, field, retry_template, userid, conversation_no):\n    if not isinstance(values,\
+          \ list):\n        return f\"{field} 必须是数组\"\n    for msgid in values:\n        if not isinstance(msgid, str) or\
+          \ msgid not in allowed:\n            return f\"{field} 包含输入中不存在的 msgid: {msgid}\"\n    return \"\"\n\ndef _check_fact_list(facts,\
+          \ allowed_msgids, target_msgids, allowed_fact_ids, conversation_no, retry_template, userid):\n    if not isinstance(facts,\
+          \ list):\n        return \"updated_profile.facts 必须是数组\"\n    for i, fact in enumerate(facts):\n        if not isinstance(fact,\
+          \ dict):\n            return f\"updated_profile.facts[{i}] 必须是对象\"\n        fact_id = fact.get(\"fact_id\")\n  \
+          \      if fact_id not in (None, \"\") and fact_id not in allowed_fact_ids:\n            return f\"updated_profile.facts[{i}].fact_id\
+          \ 不在 current_profile.facts 中\"\n        evidence_msgids = fact.get(\"evidence_msgids\")\n        err = _check_msgids(evidence_msgids,\
+          \ allowed_msgids, f\"updated_profile.facts[{i}].evidence_msgids\", retry_template, userid, conversation_no)\n  \
+          \      if err:\n            return err\n        convs = fact.get(\"evidence_conversation_nos\")\n        if not\
+          \ isinstance(convs, list) or any(c != conversation_no for c in convs):\n            return f\"updated_profile.facts[{i}].evidence_conversation_nos\
+          \ 必须只包含输入 conversation_no\"\n        source = fact.get(\"source\")\n        if source not in (\"direct\", \"context_inferred\"\
+          ):\n            return f\"updated_profile.facts[{i}].source 必须是 direct 或 context_inferred\"\n        if source ==\
+          \ \"direct\" and not any(msgid in target_msgids for msgid in evidence_msgids):\n            return f\"updated_profile.facts[{i}]\
+          \ source=direct 时必须包含目标用户自己的证据消息\"\n        confidence = _num(fact.get(\"confidence\"))\n        if confidence is\
+          \ None:\n            return f\"updated_profile.facts[{i}].confidence 必须是数字\"\n    return \"\"\n\ndef main(llm_text:\
+          \ str, userid: str, conversation_no: str, valid_msgids: list, target_msgids: list, valid_fact_ids: list, retry_template:\
+          \ str) -> dict:\n    data, parse_error = _parse(llm_text)\n    if not isinstance(data, dict):\n        return _invalid(parse_error\
+          \ or \"模型输出不是 JSON 对象\", userid, conversation_no, retry_template)\n    if data.get(\"userid\") != userid:\n    \
+          \    return _invalid(\"output.userid 必须等于输入 userid\", userid, conversation_no, retry_template)\n    if data.get(\"\
+          profile_action\") not in (\"create\", \"update\", \"no_change\"):\n        return _invalid(\"profile_action 必须是\
+          \ create、update 或 no_change\", userid, conversation_no, retry_template)\n    updated_profile = data.get(\"updated_profile\"\
+          )\n    changes = data.get(\"changes\")\n    evidence = data.get(\"evidence\")\n    confidence = _num(data.get(\"\
+          confidence\"))\n    if not isinstance(updated_profile, dict):\n        return _invalid(\"updated_profile 必须是对象\"\
+          , userid, conversation_no, retry_template)\n    if not isinstance(changes, dict):\n        return _invalid(\"changes\
+          \ 必须是对象\", userid, conversation_no, retry_template)\n    if not isinstance(evidence, dict):\n        return _invalid(\"\
+          evidence 必须是对象\", userid, conversation_no, retry_template)\n    if confidence is None:\n        return _invalid(\"\
+          confidence 必须是 0 到 1 的数字\", userid, conversation_no, retry_template)\n    if evidence.get(\"conversation_no\") !=\
+          \ conversation_no:\n        return _invalid(\"evidence.conversation_no 必须等于输入 conversation_no\", userid, conversation_no,\
+          \ retry_template)\n    allowed_msgids = set(valid_msgids or [])\n    target_set = set(target_msgids or [])\n   \
+          \ allowed_fact_ids = set(valid_fact_ids or [])\n    err = _check_msgids(evidence.get(\"msgids\"), allowed_msgids,\
+          \ \"evidence.msgids\", retry_template, userid, conversation_no)\n    if err:\n        return _invalid(err, userid,\
+          \ conversation_no, retry_template)\n    err = _check_fact_list(updated_profile.get(\"facts\"), allowed_msgids, target_set,\
+          \ allowed_fact_ids, conversation_no, retry_template, userid)\n    if err:\n        return _invalid(err, userid,\
+          \ conversation_no, retry_template)\n    for field in (\"facts_updated\", \"facts_retired\"):\n        for i, item\
+          \ in enumerate(_list(changes.get(field))):\n            if not isinstance(item, dict):\n                return _invalid(f\"\
+          changes.{field}[{i}] 必须是对象\", userid, conversation_no, retry_template)\n            fact_id = item.get(\"fact_id\"\
+          )\n            if fact_id not in allowed_fact_ids:\n                return _invalid(f\"changes.{field}[{i}].fact_id\
+          \ 不在 current_profile.facts 中\", userid, conversation_no, retry_template)\n    return {\n        \"userid\": userid,\n\
+          \        \"profile_action\": data[\"profile_action\"],\n        \"updated_profile\": updated_profile,\n        \"\
+          changes\": changes,\n        \"evidence\": evidence,\n        \"confidence\": confidence,\n        \"is_valid\"\
+          : True,\n        \"error_reason\": \"\",\n        \"retry_template\": retry_template,\n        \"raw_output\": llm_text\
+          \ or \"\",\n    }"
+        outputs:
+          userid:
+            type: string
+            children: null
+          profile_action:
+            type: string
+            children: null
+          updated_profile:
+            type: object
+            children: null
+          changes:
+            type: object
+            children: null
+          evidence:
+            type: object
+            children: null
+          confidence:
+            type: number
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+          raw_output:
+            type: string
+            children: null
+    - id: '1764811004401'
+      type: custom
+      position:
+        x: 2480
+        y: 280
+      positionAbsolute:
+        x: 2480
+        y: 280
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 2 次画像 JSON 是否有效
+        desc: 如果第 2 次校验通过则结束；否则进入最后一次修复。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: profile-valid-2
+            varType: boolean
+            variable_selector:
+            - '1764811004301'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764811005201'
+      type: custom
+      position:
+        x: 2780
+        y: 200
+      positionAbsolute:
+        x: 2780
+        y: 200
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 2 次画像结果
+        desc: 第 2 次画像输出有效，返回正式画像字段；自建系统继续校验版本、写库和状态机。
+        outputs:
+        - variable: userid
+          value_selector:
+          - '1764811004301'
+          - userid
+          value_type: string
+        - variable: profile_action
+          value_selector:
+          - '1764811004301'
+          - profile_action
+          value_type: string
+        - variable: updated_profile
+          value_selector:
+          - '1764811004301'
+          - updated_profile
+          value_type: object
+        - variable: changes
+          value_selector:
+          - '1764811004301'
+          - changes
+          value_type: object
+        - variable: evidence
+          value_selector:
+          - '1764811004301'
+          - evidence
+          value_type: object
+        - variable: confidence
+          value_selector:
+          - '1764811004301'
+          - confidence
+          value_type: number
+    - id: '1764811004501'
+      type: custom
+      position:
+        x: 2780
+        y: 420
+      positionAbsolute:
+        x: 2780
+        y: 420
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 3 次修复画像 JSON
+        desc: 最后一次修复；如果仍失败，后续 Code 节点会输出 no_change 标准结构。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.15
+            max_tokens: 2200
+        prompt_template:
+        - role: system
+          text: '你正在进行最后一次用户画像更新 JSON 修复。只能输出合法 JSON，不要解释。
+
+            如果证据不足，请输出 profile_action=no_change，不要编造事实或证据。'
+        - role: user
+          text: '原始上下文：
+
+            {{#1764811002001.context_json#}}
+
+
+            上一次错误原因：
+
+            {{#1764811004301.error_reason#}}
+
+
+            上一次原始输出：
+
+            {{#1764811004301.raw_output#}}
+
+
+            必须使用此模板：
+
+            {{#1764811004301.retry_template#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764811004601'
+      type: custom
+      position:
+        x: 3080
+        y: 420
+      positionAbsolute:
+        x: 3080
+        y: 420
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 3 次并生成最终画像结果
+        desc: 校验最后一次模型输出；仍失败时输出 no_change，避免 Dify 返回非法 JSON。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764811004501'
+          - text
+          value_type: string
+        - variable: userid
+          value_selector:
+          - '1764811002001'
+          - userid
+          value_type: string
+        - variable: conversation_no
+          value_selector:
+          - '1764811002001'
+          - conversation_no
+          value_type: string
+        - variable: valid_msgids
+          value_selector:
+          - '1764811002001'
+          - valid_msgids
+          value_type: array[string]
+        - variable: target_msgids
+          value_selector:
+          - '1764811002001'
+          - target_msgids
+          value_type: array[string]
+        - variable: valid_fact_ids
+          value_selector:
+          - '1764811002001'
+          - valid_fact_ids
+          value_type: array[string]
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _fallback(userid, conversation_no):\n    return\
+          \ {\n        \"userid\": userid,\n        \"profile_action\": \"no_change\",\n        \"updated_profile\": {\"summary\"\
+          : \"\", \"facts\": []},\n        \"changes\": {\"facts_added\": [], \"facts_updated\": [], \"facts_retired\": []},\n\
+          \        \"evidence\": {\"conversation_no\": conversation_no, \"msgids\": []},\n        \"confidence\": 0.0,\n \
+          \   }\n\ndef _msgids_valid(values, allowed):\n    return isinstance(values, list) and all(isinstance(v, str) and\
+          \ v in allowed for v in values)\n\ndef main(llm_text: str, userid: str, conversation_no: str, valid_msgids: list,\
+          \ target_msgids: list, valid_fact_ids: list) -> dict:\n    data, _error = _parse(llm_text)\n    if not isinstance(data,\
+          \ dict):\n        return _fallback(userid, conversation_no)\n    if data.get(\"userid\") != userid:\n        return\
+          \ _fallback(userid, conversation_no)\n    if data.get(\"profile_action\") not in (\"create\", \"update\", \"no_change\"\
+          ):\n        return _fallback(userid, conversation_no)\n    updated_profile = data.get(\"updated_profile\")\n   \
+          \ changes = data.get(\"changes\")\n    evidence = data.get(\"evidence\")\n    confidence = _num(data.get(\"confidence\"\
+          ))\n    if not isinstance(updated_profile, dict) or not isinstance(changes, dict) or not isinstance(evidence, dict)\
+          \ or confidence is None:\n        return _fallback(userid, conversation_no)\n    if evidence.get(\"conversation_no\"\
+          ) != conversation_no:\n        return _fallback(userid, conversation_no)\n    allowed = set(valid_msgids or [])\n\
+          \    target = set(target_msgids or [])\n    facts_allowed = set(valid_fact_ids or [])\n    if not _msgids_valid(evidence.get(\"\
+          msgids\"), allowed):\n        return _fallback(userid, conversation_no)\n    facts = updated_profile.get(\"facts\"\
+          )\n    if not isinstance(facts, list):\n        return _fallback(userid, conversation_no)\n    for fact in facts:\n\
+          \        if not isinstance(fact, dict):\n            return _fallback(userid, conversation_no)\n        fact_id\
+          \ = fact.get(\"fact_id\")\n        if fact_id not in (None, \"\") and fact_id not in facts_allowed:\n          \
+          \  return _fallback(userid, conversation_no)\n        evidence_msgids = fact.get(\"evidence_msgids\")\n        if\
+          \ not _msgids_valid(evidence_msgids, allowed):\n            return _fallback(userid, conversation_no)\n        convs\
+          \ = fact.get(\"evidence_conversation_nos\")\n        if not isinstance(convs, list) or any(c != conversation_no\
+          \ for c in convs):\n            return _fallback(userid, conversation_no)\n        source = fact.get(\"source\"\
+          )\n        if source not in (\"direct\", \"context_inferred\"):\n            return _fallback(userid, conversation_no)\n\
+          \        if source == \"direct\" and not any(msgid in target for msgid in evidence_msgids):\n            return\
+          \ _fallback(userid, conversation_no)\n    return {\n        \"userid\": userid,\n        \"profile_action\": data[\"\
+          profile_action\"],\n        \"updated_profile\": updated_profile,\n        \"changes\": changes,\n        \"evidence\"\
+          : evidence,\n        \"confidence\": confidence,\n    }"
+        outputs:
+          userid:
+            type: string
+            children: null
+          profile_action:
+            type: string
+            children: null
+          updated_profile:
+            type: object
+            children: null
+          changes:
+            type: object
+            children: null
+          evidence:
+            type: object
+            children: null
+          confidence:
+            type: number
+            children: null
+    - id: '1764811005301'
+      type: custom
+      position:
+        x: 3380
+        y: 420
+      positionAbsolute:
+        x: 3380
+        y: 420
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 3 次最终画像结果
+        desc: 第 3 次校验后的最终画像输出；自建系统继续做版本冲突检查、写库和状态机流转。
+        outputs:
+        - variable: userid
+          value_selector:
+          - '1764811004601'
+          - userid
+          value_type: string
+        - variable: profile_action
+          value_selector:
+          - '1764811004601'
+          - profile_action
+          value_type: string
+        - variable: updated_profile
+          value_selector:
+          - '1764811004601'
+          - updated_profile
+          value_type: object
+        - variable: changes
+          value_selector:
+          - '1764811004601'
+          - changes
+          value_type: object
+        - variable: evidence
+          value_selector:
+          - '1764811004601'
+          - evidence
+          value_type: object
+        - variable: confidence
+          value_selector:
+          - '1764811004601'
+          - confidence
+          value_type: number
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

@@ -12,6 +12,10 @@ from app.db.models import AiRun, ConversationSegment, Message, now_utc
 from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow
 from app.conversations.schemas import ConversationSegmentRunRequest
+from app.ai_memory.full_test import (
+    DayWindow,
+    run_conversation_boundary_detection,
+)
 
 
 class ConversationOutputValidationError(Exception):
@@ -36,60 +40,24 @@ def run_conversation_segmentation(
             f"No messages found for chatid={payload.chatid} in the requested window",
         )
 
-    workflow = get_enabled_workflow(
+    result = run_conversation_boundary_detection(
         session,
-        workflow_code="conversation_segmentation",
-        version="v1",
-    )
-    input_json = _build_segmentation_input(
         chatid=payload.chatid,
-        start_time=start_time,
-        end_time=end_time,
+        target_date=start_time.date(),
+        window=DayWindow(start=start_time, end=end_time),
         messages=messages,
-        mode=payload.mode,
+        dify_client=dify_client,
     )
-    validate_json_schema(input_json, workflow.input_schema)
-
-    ai_run = AiRun(
-        run_id=_new_run_id(),
-        workflow_code=workflow.workflow_code,
-        workflow_version=workflow.version,
-        trigger_event_id=None,
-        input_json=input_json,
-        response_mode=workflow.response_mode,
-        status="running",
-        created_at=now_utc(),
-        started_at=now_utc(),
-    )
-    session.add(ai_run)
-    session.flush()
-
-    started = perf_counter()
-    segments: list[ConversationSegment] = []
-    try:
-        output_json = dify_client.run_workflow(workflow, input_json)
-        ai_run.output_json = output_json
-        validate_json_schema(output_json, workflow.output_schema)
-        validated_segments = _validate_segmentation_output(output_json, messages)
-        segments = _write_segments(session, ai_run, payload.chatid, validated_segments)
-        ai_run.status = "success"
-        ai_run.error_message = None
-    except (JsonSchemaValidationError, ConversationOutputValidationError) as exc:
-        ai_run.status = "invalid_output"
-        ai_run.error_message = getattr(exc, "message", str(exc))
-    except Exception as exc:
-        ai_run.status = "failed"
-        ai_run.error_message = str(exc)
-    finally:
-        ai_run.latency_ms = int((perf_counter() - started) * 1000)
-        ai_run.finished_at = now_utc()
-
     session.commit()
 
     return {
-        "run_id": ai_run.run_id,
-        "status": ai_run.status,
-        "segments": [conversation_segment_to_dict(segment) for segment in segments],
+        "run_id": result["run_id"],
+        "status": result["status"],
+        "segments": [
+            conversation_segment_to_dict(session.get(ConversationSegment, item["id"]))
+            for item in result.get("segments", [])
+            if session.get(ConversationSegment, item["id"])
+        ],
     }
 
 

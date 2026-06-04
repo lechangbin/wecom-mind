@@ -59,10 +59,18 @@ class Settings(BaseSettings):
     dify_api_key: str | None = None
     dify_group_knowledge_reply_api_key: str | None = None
     dify_chat_proactive_reminder_api_key: str | None = None
+    dify_conversation_boundary_detection_api_key: str | None = None
+    dify_user_profile_update_api_key: str | None = None
     dify_client_mode: Literal["mock", "real", "webhook"] = "mock"
     dify_timeout_seconds: int = 120
     dify_max_retries: int = 0
     dify_user: str = "wecom-bot-system"
+
+    ai_memory_full_test_enabled: bool = False
+    ai_memory_full_test_chatids: str | None = None
+    ai_memory_full_test_interval_seconds: int = 86400
+    ai_memory_full_test_days_back: int = 1
+    ai_memory_full_test_run_profiles: bool = True
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO"
@@ -108,6 +116,16 @@ class Settings(BaseSettings):
         return [
             item.strip()
             for item in self.wecom_message_reconcile_chatids.split(",")
+            if item.strip()
+        ]
+
+    @property
+    def ai_memory_full_test_chatid_list(self) -> list[str]:
+        if not self.ai_memory_full_test_chatids:
+            return []
+        return [
+            item.strip()
+            for item in self.ai_memory_full_test_chatids.split(",")
             if item.strip()
         ]
 

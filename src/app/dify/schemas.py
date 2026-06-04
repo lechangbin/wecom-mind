@@ -71,6 +71,97 @@ CHAT_PROACTIVE_REMINDER_OUTPUT_SCHEMA = {
     ],
 }
 
+CONVERSATION_BOUNDARY_DETECTION_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": ["status", "split_positions", "confidence", "error"],
+    "properties": {
+        "status": {"type": "string", "enum": ["success", "failed"]},
+        "split_positions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": [
+                    "after_msgid",
+                    "before_msgid",
+                    "reason_type",
+                    "reason",
+                    "confidence",
+                ],
+                "properties": {
+                    "after_msgid": {"type": "string", "minLength": 1},
+                    "before_msgid": {"type": "string", "minLength": 1},
+                    "reason_type": {
+                        "type": "string",
+                        "enum": [
+                            "time_gap",
+                            "intent_shift",
+                            "topic_shift",
+                            "task_closed",
+                            "manual_hint",
+                            "other",
+                        ],
+                    },
+                    "reason": {"type": "string"},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "additionalProperties": True,
+            },
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "error": {"type": ["object", "null"]},
+    },
+    "additionalProperties": True,
+}
+
+USER_PROFILE_UPDATE_OUTPUT_SCHEMA = {
+    "type": "object",
+    "required": [
+        "userid",
+        "profile_action",
+        "updated_profile",
+        "changes",
+        "evidence",
+        "confidence",
+    ],
+    "properties": {
+        "userid": {"type": "string"},
+        "profile_action": {
+            "type": "string",
+            "enum": ["create", "update", "no_change"],
+        },
+        "updated_profile": {
+            "type": "object",
+            "required": ["summary", "facts"],
+            "properties": {
+                "summary": {"type": "string"},
+                "facts": {"type": "array", "items": {"type": "object"}},
+            },
+            "additionalProperties": True,
+        },
+        "changes": {
+            "type": "object",
+            "required": ["facts_added", "facts_updated", "facts_retired"],
+            "properties": {
+                "facts_added": {"type": "array", "items": {"type": "object"}},
+                "facts_updated": {"type": "array", "items": {"type": "object"}},
+                "facts_retired": {"type": "array", "items": {"type": "object"}},
+            },
+            "additionalProperties": True,
+        },
+        "evidence": {
+            "type": "object",
+            "required": ["conversation_no", "msgids"],
+            "properties": {
+                "conversation_no": {"type": "string"},
+                "msgids": {"type": "array", "items": {"type": "string"}},
+            },
+            "additionalProperties": True,
+        },
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    },
+    "additionalProperties": True,
+}
+
 REPLY_GENERATION_INPUT_SCHEMA = {
     "type": "object",
     "required": [

@@ -1,0 +1,984 @@
+version: 0.6.0
+kind: app
+app:
+  name: conversation_boundary_detection
+  mode: workflow
+  icon: 🧩
+  icon_background: '#FFF3E0'
+  icon_type: emoji
+  description: 每日会话切分：接收自建系统传入的单日全量群消息和用户信息，输出会话切分位置数组，由自建系统校验并切分入库。
+  use_icon_as_answer_icon: false
+dependencies: []
+workflow:
+  environment_variables: []
+  conversation_variables: []
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    edges:
+    - id: 1764810001001-source-1764810002001-target
+      source: '1764810001001'
+      sourceHandle: source
+      target: '1764810002001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: start
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810002001-source-1764810002101-target
+      source: '1764810002001'
+      sourceHandle: source
+      target: '1764810002101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810002101-false-1764810005901-target
+      source: '1764810002101'
+      sourceHandle: 'false'
+      target: '1764810005901'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810002101-true-1764810003001-target
+      source: '1764810002101'
+      sourceHandle: 'true'
+      target: '1764810003001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810003001-source-1764810004001-target
+      source: '1764810003001'
+      sourceHandle: source
+      target: '1764810004001'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004001-source-1764810004101-target
+      source: '1764810004001'
+      sourceHandle: source
+      target: '1764810004101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004101-true-1764810005101-target
+      source: '1764810004101'
+      sourceHandle: 'true'
+      target: '1764810005101'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004101-false-1764810004201-target
+      source: '1764810004101'
+      sourceHandle: 'false'
+      target: '1764810004201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004201-source-1764810004301-target
+      source: '1764810004201'
+      sourceHandle: source
+      target: '1764810004301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004301-source-1764810004401-target
+      source: '1764810004301'
+      sourceHandle: source
+      target: '1764810004401'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: if-else
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004401-true-1764810005201-target
+      source: '1764810004401'
+      sourceHandle: 'true'
+      target: '1764810005201'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004401-false-1764810004501-target
+      source: '1764810004401'
+      sourceHandle: 'false'
+      target: '1764810004501'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: if-else
+        targetType: llm
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004501-source-1764810004601-target
+      source: '1764810004501'
+      sourceHandle: source
+      target: '1764810004601'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: llm
+        targetType: code
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    - id: 1764810004601-source-1764810005301-target
+      source: '1764810004601'
+      sourceHandle: source
+      target: '1764810005301'
+      targetHandle: target
+      type: custom
+      data:
+        sourceType: code
+        targetType: end
+        isInIteration: false
+        isInLoop: false
+      zIndex: 0
+    nodes:
+    - id: '1764810001001'
+      type: custom
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: start
+        title: 开始：接收每日消息 payload
+        desc: 接收自建系统传入的单日全量群消息、用户信息和运行窗口；本节点只声明 payload，不做切分判断。
+        variables:
+        - variable: payload
+          label: 每日会话切分 payload
+          type: json_object
+          required: true
+          hint: 包含 chat、window、messages、users、existing_segments、runtime。
+    - id: '1764810002001'
+      type: custom
+      position:
+        x: 380
+        y: 282
+      positionAbsolute:
+        x: 380
+        y: 282
+      width: 244
+      height: 140
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：提取并校验消息窗口
+        desc: 从 payload 中提取单日消息、用户和窗口信息，生成压缩上下文、msgid 白名单和相邻消息对；输入无效时直接输出 failed 标准结构。
+        code_language: python3
+        variables:
+        - variable: payload
+          value_selector:
+          - '1764810001001'
+          - payload
+          value_type: object
+        code: "import json\n\nRETRY_TEMPLATE = json.dumps({\n    \"status\": \"success 或 failed\",\n    \"split_positions\"\
+          : [\n        {\n            \"after_msgid\": \"输入中存在且与 before_msgid 相邻的 msgid\",\n            \"before_msgid\":\
+          \ \"输入中存在且紧跟 after_msgid 的 msgid\",\n            \"reason_type\": \"time_gap 或 intent_shift 或 topic_shift 或 task_closed\
+          \ 或 manual_hint 或 other\",\n            \"reason\": \"切分原因\",\n            \"confidence\": 0.0\n        }\n    ],\n\
+          \    \"confidence\": 0.0,\n    \"error\": None\n}, ensure_ascii=False, indent=2)\n\ndef _as_dict(value):\n    if\
+          \ isinstance(value, dict):\n        return value\n    if isinstance(value, str):\n        try:\n            parsed\
+          \ = json.loads(value)\n            return parsed if isinstance(parsed, dict) else {}\n        except Exception:\n\
+          \            return {}\n    return {}\n\ndef _safe_list(value):\n    return value if isinstance(value, list) else\
+          \ []\n\ndef _text(value):\n    return value.strip() if isinstance(value, str) and value.strip() else \"\"\n\ndef\
+          \ _failed(reason):\n    return {\n        \"input_valid\": False,\n        \"status\": \"failed\",\n        \"split_positions\"\
+          : [],\n        \"confidence\": 0.0,\n        \"error\": {\"reason\": reason, \"last_error\": reason, \"attempts\"\
+          : 0},\n        \"context_json\": \"{}\",\n        \"known_msgids\": [],\n        \"ordered_msgids\": [],\n     \
+          \   \"adjacent_map\": {},\n        \"retry_template\": RETRY_TEMPLATE,\n    }\n\ndef main(payload: dict) -> dict:\n\
+          \    data = _as_dict(payload)\n    chat = _as_dict(data.get(\"chat\"))\n    window = _as_dict(data.get(\"window\"\
+          ))\n    messages = _safe_list(data.get(\"messages\"))\n    users = _safe_list(data.get(\"users\"))\n\n    normalized\
+          \ = []\n    for index, item in enumerate(messages):\n        msg = _as_dict(item)\n        msgid = _text(msg.get(\"\
+          msgid\"))\n        if not msgid:\n            return _failed(f\"messages[{index}].msgid 缺失\")\n        normalized.append({\n\
+          \            \"index\": index,\n            \"message_id\": str(msg.get(\"message_id\") or \"\"),\n            \"\
+          msgid\": msgid,\n            \"userid\": _text(msg.get(\"userid\")),\n            \"sender_type\": _text(msg.get(\"\
+          sender_type\") or \"user\"),\n            \"bot_role\": msg.get(\"bot_role\"),\n            \"msgtype\": _text(msg.get(\"\
+          msgtype\") or \"text\"),\n            \"content\": _text(msg.get(\"content\") or msg.get(\"content_text\")),\n \
+          \           \"quote_msgid\": msg.get(\"quote_msgid\"),\n            \"mentioned_bot\": bool(msg.get(\"mentioned_bot\"\
+          )),\n            \"mentioned_users\": _safe_list(msg.get(\"mentioned_users\")),\n            \"create_time\": _text(msg.get(\"\
+          create_time\")),\n        })\n\n    if len(normalized) < 2:\n        return {\n            \"input_valid\": False,\n\
+          \            \"status\": \"success\",\n            \"split_positions\": [],\n            \"confidence\": 1.0,\n\
+          \            \"error\": None,\n            \"context_json\": json.dumps({\n                \"chat\": chat,\n   \
+          \             \"window\": window,\n                \"messages\": normalized,\n                \"users\": users,\n\
+          \                \"policy\": \"消息少于 2 条，无需切分。\"\n            }, ensure_ascii=False, separators=(\",\", \":\")),\n\
+          \            \"known_msgids\": [m[\"msgid\"] for m in normalized],\n            \"ordered_msgids\": [m[\"msgid\"\
+          ] for m in normalized],\n            \"adjacent_map\": {},\n            \"retry_template\": RETRY_TEMPLATE,\n  \
+          \      }\n\n    ordered_msgids = [m[\"msgid\"] for m in normalized]\n    adjacent_map = {\n        ordered_msgids[i]:\
+          \ ordered_msgids[i + 1]\n        for i in range(len(ordered_msgids) - 1)\n    }\n    context = {\n        \"chat\"\
+          : chat,\n        \"window\": window,\n        \"messages\": normalized,\n        \"users\": users,\n        \"existing_segments\"\
+          : _safe_list(data.get(\"existing_segments\")),\n        \"rules\": [\n            \"时间间隔显著变长时可以切分，但不能只凭时间切分。\",\n\
+          \            \"意图、主题、任务目标明显变化时可以切分。\",\n            \"机器人回复通常跟随前一条用户问题，不单独形成新会话。\",\n            \"quote_msgid 指向前文时优先保持同一会话。\"\
+          ,\n            \"短确认、表情、收到等噪声不应单独触发切分。\",\n            \"只能输出输入中存在且相邻的 msgid 作为切分点。\"\n        ]\n    }\n    return\
+          \ {\n        \"input_valid\": True,\n        \"status\": \"success\",\n        \"split_positions\": [],\n      \
+          \  \"confidence\": 0.0,\n        \"error\": None,\n        \"context_json\": json.dumps(context, ensure_ascii=False,\
+          \ separators=(\",\", \":\")),\n        \"known_msgids\": ordered_msgids,\n        \"ordered_msgids\": ordered_msgids,\n\
+          \        \"adjacent_map\": adjacent_map,\n        \"retry_template\": RETRY_TEMPLATE,\n    }\n"
+        outputs:
+          input_valid:
+            type: boolean
+            children: null
+          status:
+            type: string
+            children: null
+          split_positions:
+            type: array[object]
+            children: null
+          confidence:
+            type: number
+            children: null
+          error:
+            type: object
+            children: null
+          context_json:
+            type: string
+            children: null
+          known_msgids:
+            type: array[string]
+            children: null
+          ordered_msgids:
+            type: array[string]
+            children: null
+          adjacent_map:
+            type: object
+            children: null
+          retry_template:
+            type: string
+            children: null
+    - id: '1764810002101'
+      type: custom
+      position:
+        x: 680
+        y: 282
+      positionAbsolute:
+        x: 680
+        y: 282
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：是否需要调用模型
+        desc: 输入有效且消息不少于 2 条时进入大模型切分；否则直接输出标准 success/failed 结构。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: conv-input-valid
+            varType: boolean
+            variable_selector:
+            - '1764810002001'
+            - input_valid
+            comparison_operator: is
+            value: true
+    - id: '1764810005901'
+      type: custom
+      position:
+        x: 980
+        y: 520
+      positionAbsolute:
+        x: 980
+        y: 520
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：输入无需模型处理
+        desc: 输入无效或消息不足时，直接返回标准结构；自建系统负责记录日志和决定是否重试。
+        outputs:
+        - variable: status
+          value_selector:
+          - '1764810002001'
+          - status
+          value_type: string
+        - variable: split_positions
+          value_selector:
+          - '1764810002001'
+          - split_positions
+          value_type: array[object]
+        - variable: confidence
+          value_selector:
+          - '1764810002001'
+          - confidence
+          value_type: number
+        - variable: error
+          value_selector:
+          - '1764810002001'
+          - error
+          value_type: object
+    - id: '1764810003001'
+      type: custom
+      position:
+        x: 980
+        y: 120
+      positionAbsolute:
+        x: 980
+        y: 120
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 1 次生成切分点
+        desc: 第 1 次尝试输出 split_positions；只判断切分位置，不生成 conversation_no，不写库。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.1
+            max_tokens: 1800
+        prompt_template:
+        - role: system
+          text: "你是企业微信群每日会话切分 AI 节点，只负责输出会话切分位置，不负责写库、不负责生成 conversation_no、不负责摘要入库。\n\n必须只输出合法 JSON，不要在 JSON 外输出解释性自然语言。\n\
+            \n输出结构：\n{\n  \"status\": \"success\",\n  \"split_positions\": [\n    {\n      \"after_msgid\": \"输入中存在的 msgid\"\
+            ,\n      \"before_msgid\": \"输入中存在且紧跟 after_msgid 的 msgid\",\n      \"reason_type\": \"time_gap | intent_shift\
+            \ | topic_shift | task_closed | manual_hint | other\",\n      \"reason\": \"切分原因\",\n      \"confidence\": 0 到\
+            \ 1 的数字\n    }\n  ],\n  \"confidence\": 0 到 1 的数字,\n  \"error\": null\n}\n\n切分规则：\n- 时间间隔明显变长可以切分，但不能只凭时间切分。\n\
+            - 意图从咨询、确认、安排、闲聊等明显变化时可以切分。\n- 业务对象、客户、问题域、任务目标变化时可以切分。\n- 一个问题已经得到回答、确认或形成后续动作后，后续新问题可以切分。\n- quote_msgid 指向前文时优先保持同一会话。\n\
+            - 机器人回复通常跟随前一条用户问题，不应单独形成新会话。\n- 表情、确认收到、短回复不应单独触发切分。\n- 不要把每条消息都切成独立会话，也不要把明显跨多个主题的一整天消息合并成一个会话。\n- after_msgid\
+            \ 和 before_msgid 必须来自输入，且必须是相邻消息。"
+        - role: user
+          text: '每日消息上下文 JSON：
+
+            {{#1764810002001.context_json#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764810004001'
+      type: custom
+      position:
+        x: 1280
+        y: 120
+      positionAbsolute:
+        x: 1280
+        y: 120
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 1 次切分 JSON
+        desc: 解析第 1 次模型输出，校验 split_positions 是否引用输入中存在且相邻的 msgid；失败时生成修复提示变量。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764810003001'
+          - text
+          value_type: string
+        - variable: ordered_msgids
+          value_selector:
+          - '1764810002001'
+          - ordered_msgids
+          value_type: array[string]
+        - variable: adjacent_map
+          value_selector:
+          - '1764810002001'
+          - adjacent_map
+          value_type: object
+        - variable: retry_template
+          value_selector:
+          - '1764810002001'
+          - retry_template
+          value_type: string
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _invalid(reason, retry_template):\n    return\
+          \ {\n        \"status\": \"failed\",\n        \"split_positions\": [],\n        \"confidence\": 0.0,\n        \"\
+          error\": {\"reason\": reason, \"last_error\": reason, \"attempts\": 0},\n        \"is_valid\": False,\n        \"\
+          error_reason\": reason,\n        \"retry_template\": retry_template,\n        \"raw_output\": \"\",\n    }\n\ndef\
+          \ main(llm_text: str, ordered_msgids: list, adjacent_map: dict, retry_template: str) -> dict:\n    data, parse_error\
+          \ = _parse(llm_text)\n    if not isinstance(data, dict):\n        return _invalid(parse_error or \"模型输出不是 JSON 对象\"\
+          , retry_template)\n\n    if data.get(\"status\") != \"success\":\n        return _invalid(\"status 必须是 success\"\
+          , retry_template)\n    positions = data.get(\"split_positions\")\n    if not isinstance(positions, list):\n    \
+          \    return _invalid(\"split_positions 必须是数组\", retry_template)\n    confidence = _num(data.get(\"confidence\"))\n\
+          \    if confidence is None:\n        return _invalid(\"confidence 必须是 0 到 1 的数字\", retry_template)\n\n    allowed\
+          \ = set(ordered_msgids or [])\n    seen = set()\n    validated = []\n    allowed_reason_types = {\"time_gap\", \"\
+          intent_shift\", \"topic_shift\", \"task_closed\", \"manual_hint\", \"other\"}\n    for index, item in enumerate(positions):\n\
+          \        if not isinstance(item, dict):\n            return _invalid(f\"split_positions[{index}] 必须是对象\", retry_template)\n\
+          \        after = item.get(\"after_msgid\")\n        before = item.get(\"before_msgid\")\n        if not isinstance(after,\
+          \ str) or after not in allowed:\n            return _invalid(f\"split_positions[{index}].after_msgid 不在输入消息中\",\
+          \ retry_template)\n        if not isinstance(before, str) or before not in allowed:\n            return _invalid(f\"\
+          split_positions[{index}].before_msgid 不在输入消息中\", retry_template)\n        if adjacent_map.get(after) != before:\n\
+          \            return _invalid(f\"split_positions[{index}] 的 after_msgid 和 before_msgid 必须相邻\", retry_template)\n\
+          \        pair_key = after + \"->\" + before\n        if pair_key in seen:\n            return _invalid(f\"split_positions[{index}]\
+          \ 重复切分点\", retry_template)\n        seen.add(pair_key)\n        reason_type = item.get(\"reason_type\")\n      \
+          \  if reason_type not in allowed_reason_types:\n            return _invalid(f\"split_positions[{index}].reason_type\
+          \ 不合法\", retry_template)\n        reason = item.get(\"reason\")\n        if not isinstance(reason, str) or not reason.strip():\n\
+          \            return _invalid(f\"split_positions[{index}].reason 不能为空\", retry_template)\n        item_confidence\
+          \ = _num(item.get(\"confidence\"))\n        if item_confidence is None:\n            return _invalid(f\"split_positions[{index}].confidence\
+          \ 必须是数字\", retry_template)\n        validated.append({\n            \"after_msgid\": after,\n            \"before_msgid\"\
+          : before,\n            \"reason_type\": reason_type,\n            \"reason\": reason.strip(),\n            \"confidence\"\
+          : item_confidence,\n        })\n\n    order = {msgid: i for i, msgid in enumerate(ordered_msgids or [])}\n    validated.sort(key=lambda\
+          \ item: order.get(item[\"after_msgid\"], 0))\n    return {\n        \"status\": \"success\",\n        \"split_positions\"\
+          : validated,\n        \"confidence\": confidence,\n        \"error\": None,\n        \"is_valid\": True,\n     \
+          \   \"error_reason\": \"\",\n        \"retry_template\": retry_template,\n        \"raw_output\": llm_text or \"\
+          \",\n    }"
+        outputs:
+          status:
+            type: string
+            children: null
+          split_positions:
+            type: array[object]
+            children: null
+          confidence:
+            type: number
+            children: null
+          error:
+            type: object
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+          raw_output:
+            type: string
+            children: null
+    - id: '1764810004101'
+      type: custom
+      position:
+        x: 1580
+        y: 120
+      positionAbsolute:
+        x: 1580
+        y: 120
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 1 次切分结果是否有效
+        desc: 如果第 1 次校验通过则结束；否则进入第 1 次修复，并把错误原因和模板传给模型。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: conv-valid-1
+            varType: boolean
+            variable_selector:
+            - '1764810004001'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764810005101'
+      type: custom
+      position:
+        x: 1880
+        y: 20
+      positionAbsolute:
+        x: 1880
+        y: 20
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 1 次切分结果
+        desc: 第 1 次输出有效，返回正式 split_positions；自建系统继续校验、重试和入库。
+        outputs:
+        - variable: status
+          value_selector:
+          - '1764810004001'
+          - status
+          value_type: string
+        - variable: split_positions
+          value_selector:
+          - '1764810004001'
+          - split_positions
+          value_type: array[object]
+        - variable: confidence
+          value_selector:
+          - '1764810004001'
+          - confidence
+          value_type: number
+        - variable: error
+          value_selector:
+          - '1764810004001'
+          - error
+          value_type: object
+    - id: '1764810004201'
+      type: custom
+      position:
+        x: 1880
+        y: 280
+      positionAbsolute:
+        x: 1880
+        y: 280
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 2 次修复切分 JSON
+        desc: 第 1 次修复；读取上一次错误原因和原始输出，重新输出合法切分点 JSON。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.1
+            max_tokens: 1800
+        prompt_template:
+        - role: system
+          text: '你正在修复“每日会话切分”JSON。只能输出合法 JSON，不要解释。
+
+            你必须遵守模板，after_msgid/before_msgid 必须来自输入且相邻。'
+        - role: user
+          text: '原始上下文：
+
+            {{#1764810002001.context_json#}}
+
+
+            上一次错误原因：
+
+            {{#1764810004001.error_reason#}}
+
+
+            上一次原始输出：
+
+            {{#1764810004001.raw_output#}}
+
+
+            必须使用此模板：
+
+            {{#1764810004001.retry_template#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764810004301'
+      type: custom
+      position:
+        x: 2180
+        y: 280
+      positionAbsolute:
+        x: 2180
+        y: 280
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 2 次切分 JSON
+        desc: 校验第 1 次修复后的 JSON；失败时继续输出错误原因给最后一次修复。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764810004201'
+          - text
+          value_type: string
+        - variable: ordered_msgids
+          value_selector:
+          - '1764810002001'
+          - ordered_msgids
+          value_type: array[string]
+        - variable: adjacent_map
+          value_selector:
+          - '1764810002001'
+          - adjacent_map
+          value_type: object
+        - variable: retry_template
+          value_selector:
+          - '1764810002001'
+          - retry_template
+          value_type: string
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _invalid(reason, retry_template):\n    return\
+          \ {\n        \"status\": \"failed\",\n        \"split_positions\": [],\n        \"confidence\": 0.0,\n        \"\
+          error\": {\"reason\": reason, \"last_error\": reason, \"attempts\": 0},\n        \"is_valid\": False,\n        \"\
+          error_reason\": reason,\n        \"retry_template\": retry_template,\n        \"raw_output\": \"\",\n    }\n\ndef\
+          \ main(llm_text: str, ordered_msgids: list, adjacent_map: dict, retry_template: str) -> dict:\n    data, parse_error\
+          \ = _parse(llm_text)\n    if not isinstance(data, dict):\n        return _invalid(parse_error or \"模型输出不是 JSON 对象\"\
+          , retry_template)\n\n    if data.get(\"status\") != \"success\":\n        return _invalid(\"status 必须是 success\"\
+          , retry_template)\n    positions = data.get(\"split_positions\")\n    if not isinstance(positions, list):\n    \
+          \    return _invalid(\"split_positions 必须是数组\", retry_template)\n    confidence = _num(data.get(\"confidence\"))\n\
+          \    if confidence is None:\n        return _invalid(\"confidence 必须是 0 到 1 的数字\", retry_template)\n\n    allowed\
+          \ = set(ordered_msgids or [])\n    seen = set()\n    validated = []\n    allowed_reason_types = {\"time_gap\", \"\
+          intent_shift\", \"topic_shift\", \"task_closed\", \"manual_hint\", \"other\"}\n    for index, item in enumerate(positions):\n\
+          \        if not isinstance(item, dict):\n            return _invalid(f\"split_positions[{index}] 必须是对象\", retry_template)\n\
+          \        after = item.get(\"after_msgid\")\n        before = item.get(\"before_msgid\")\n        if not isinstance(after,\
+          \ str) or after not in allowed:\n            return _invalid(f\"split_positions[{index}].after_msgid 不在输入消息中\",\
+          \ retry_template)\n        if not isinstance(before, str) or before not in allowed:\n            return _invalid(f\"\
+          split_positions[{index}].before_msgid 不在输入消息中\", retry_template)\n        if adjacent_map.get(after) != before:\n\
+          \            return _invalid(f\"split_positions[{index}] 的 after_msgid 和 before_msgid 必须相邻\", retry_template)\n\
+          \        pair_key = after + \"->\" + before\n        if pair_key in seen:\n            return _invalid(f\"split_positions[{index}]\
+          \ 重复切分点\", retry_template)\n        seen.add(pair_key)\n        reason_type = item.get(\"reason_type\")\n      \
+          \  if reason_type not in allowed_reason_types:\n            return _invalid(f\"split_positions[{index}].reason_type\
+          \ 不合法\", retry_template)\n        reason = item.get(\"reason\")\n        if not isinstance(reason, str) or not reason.strip():\n\
+          \            return _invalid(f\"split_positions[{index}].reason 不能为空\", retry_template)\n        item_confidence\
+          \ = _num(item.get(\"confidence\"))\n        if item_confidence is None:\n            return _invalid(f\"split_positions[{index}].confidence\
+          \ 必须是数字\", retry_template)\n        validated.append({\n            \"after_msgid\": after,\n            \"before_msgid\"\
+          : before,\n            \"reason_type\": reason_type,\n            \"reason\": reason.strip(),\n            \"confidence\"\
+          : item_confidence,\n        })\n\n    order = {msgid: i for i, msgid in enumerate(ordered_msgids or [])}\n    validated.sort(key=lambda\
+          \ item: order.get(item[\"after_msgid\"], 0))\n    return {\n        \"status\": \"success\",\n        \"split_positions\"\
+          : validated,\n        \"confidence\": confidence,\n        \"error\": None,\n        \"is_valid\": True,\n     \
+          \   \"error_reason\": \"\",\n        \"retry_template\": retry_template,\n        \"raw_output\": llm_text or \"\
+          \",\n    }"
+        outputs:
+          status:
+            type: string
+            children: null
+          split_positions:
+            type: array[object]
+            children: null
+          confidence:
+            type: number
+            children: null
+          error:
+            type: object
+            children: null
+          is_valid:
+            type: boolean
+            children: null
+          error_reason:
+            type: string
+            children: null
+          retry_template:
+            type: string
+            children: null
+          raw_output:
+            type: string
+            children: null
+    - id: '1764810004401'
+      type: custom
+      position:
+        x: 2480
+        y: 280
+      positionAbsolute:
+        x: 2480
+        y: 280
+      width: 244
+      height: 126
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: if-else
+        title: 判断：第 2 次切分结果是否有效
+        desc: 如果第 2 次校验通过则结束；否则进入最后一次修复。
+        cases:
+        - case_id: 'true'
+          logical_operator: and
+          conditions:
+          - id: conv-valid-2
+            varType: boolean
+            variable_selector:
+            - '1764810004301'
+            - is_valid
+            comparison_operator: is
+            value: true
+    - id: '1764810005201'
+      type: custom
+      position:
+        x: 2780
+        y: 200
+      positionAbsolute:
+        x: 2780
+        y: 200
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 2 次切分结果
+        desc: 第 2 次输出有效，返回正式 split_positions；自建系统继续校验、重试和入库。
+        outputs:
+        - variable: status
+          value_selector:
+          - '1764810004301'
+          - status
+          value_type: string
+        - variable: split_positions
+          value_selector:
+          - '1764810004301'
+          - split_positions
+          value_type: array[object]
+        - variable: confidence
+          value_selector:
+          - '1764810004301'
+          - confidence
+          value_type: number
+        - variable: error
+          value_selector:
+          - '1764810004301'
+          - error
+          value_type: object
+    - id: '1764810004501'
+      type: custom
+      position:
+        x: 2780
+        y: 420
+      positionAbsolute:
+        x: 2780
+        y: 420
+      width: 244
+      height: 132
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: llm
+        title: 大模型：第 3 次修复切分 JSON
+        desc: 最后一次修复；仍失败时由后续 Code 节点输出 failed 标准结构。
+        model:
+          provider: langgenius/siliconflow/siliconflow
+          name: Qwen/Qwen3-8B
+          mode: chat
+          completion_params:
+            temperature: 0.1
+            max_tokens: 1800
+        prompt_template:
+        - role: system
+          text: '你正在进行最后一次“每日会话切分”JSON 修复。只能输出合法 JSON，不要解释。
+
+            若无法确定切分点，请输出 success 且 split_positions 为空数组，不要编造 msgid。'
+        - role: user
+          text: '原始上下文：
+
+            {{#1764810002001.context_json#}}
+
+
+            上一次错误原因：
+
+            {{#1764810004301.error_reason#}}
+
+
+            上一次原始输出：
+
+            {{#1764810004301.raw_output#}}
+
+
+            必须使用此模板：
+
+            {{#1764810004301.retry_template#}}'
+        variables: []
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+    - id: '1764810004601'
+      type: custom
+      position:
+        x: 3080
+        y: 420
+      positionAbsolute:
+        x: 3080
+        y: 420
+      width: 244
+      height: 128
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: code
+        title: 代码：校验第 3 次并生成最终结果
+        desc: 校验最后一次模型输出；若仍失败，返回 status=failed、空切分点和详细错误，交由自建系统最多重试一次。
+        code_language: python3
+        variables:
+        - variable: llm_text
+          value_selector:
+          - '1764810004501'
+          - text
+          value_type: string
+        - variable: ordered_msgids
+          value_selector:
+          - '1764810002001'
+          - ordered_msgids
+          value_type: array[string]
+        - variable: adjacent_map
+          value_selector:
+          - '1764810002001'
+          - adjacent_map
+          value_type: object
+        - variable: retry_template
+          value_selector:
+          - '1764810002001'
+          - retry_template
+          value_type: string
+        code: "import json\nimport re\n\ndef _parse(text):\n    if not isinstance(text, str):\n        return None, \"模型输出不是字符串\"\
+          \n    raw = text.strip()\n    if raw.startswith(\"```\"):\n        raw = re.sub(r\"^```(?:json)?\\s*\", \"\", raw)\n\
+          \        raw = re.sub(r\"\\s*```$\", \"\", raw)\n    try:\n        return json.loads(raw), \"\"\n    except Exception\
+          \ as first_error:\n        match = re.search(r\"\\{.*\\}\", raw, re.S)\n        if not match:\n            return\
+          \ None, f\"未找到 JSON 对象：{first_error}\"\n        try:\n            return json.loads(match.group(0)), \"\"\n    \
+          \    except Exception as second_error:\n            return None, f\"JSON 解析失败：{second_error}\"\n\ndef _num(value):\n\
+          \    if isinstance(value, bool):\n        return None\n    try:\n        number = float(value)\n    except Exception:\n\
+          \        return None\n    return max(0.0, min(1.0, number))\n\ndef _failed(reason):\n    return {\n        \"status\"\
+          : \"failed\",\n        \"split_positions\": [],\n        \"confidence\": 0.0,\n        \"error\": {\"reason\": \"\
+          LLM 输出在 3 次尝试后仍不符合 JSON schema。\", \"last_error\": reason, \"attempts\": 3},\n    }\n\ndef main(llm_text: str, ordered_msgids:\
+          \ list, adjacent_map: dict, retry_template: str) -> dict:\n    data, parse_error = _parse(llm_text)\n    if not\
+          \ isinstance(data, dict):\n        return _failed(parse_error or \"模型输出不是 JSON 对象\")\n    if data.get(\"status\"\
+          ) != \"success\":\n        return _failed(\"status 必须是 success\")\n    positions = data.get(\"split_positions\"\
+          )\n    if not isinstance(positions, list):\n        return _failed(\"split_positions 必须是数组\")\n    confidence =\
+          \ _num(data.get(\"confidence\"))\n    if confidence is None:\n        return _failed(\"confidence 必须是 0 到 1 的数字\"\
+          )\n    allowed = set(ordered_msgids or [])\n    seen = set()\n    validated = []\n    allowed_reason_types = {\"\
+          time_gap\", \"intent_shift\", \"topic_shift\", \"task_closed\", \"manual_hint\", \"other\"}\n    for index, item\
+          \ in enumerate(positions):\n        if not isinstance(item, dict):\n            return _failed(f\"split_positions[{index}]\
+          \ 必须是对象\")\n        after = item.get(\"after_msgid\")\n        before = item.get(\"before_msgid\")\n        if not\
+          \ isinstance(after, str) or after not in allowed:\n            return _failed(f\"split_positions[{index}].after_msgid\
+          \ 不在输入消息中\")\n        if not isinstance(before, str) or before not in allowed:\n            return _failed(f\"split_positions[{index}].before_msgid\
+          \ 不在输入消息中\")\n        if adjacent_map.get(after) != before:\n            return _failed(f\"split_positions[{index}]\
+          \ 的 after_msgid 和 before_msgid 必须相邻\")\n        pair_key = after + \"->\" + before\n        if pair_key in seen:\n\
+          \            return _failed(f\"split_positions[{index}] 重复切分点\")\n        seen.add(pair_key)\n        reason_type\
+          \ = item.get(\"reason_type\")\n        if reason_type not in allowed_reason_types:\n            return _failed(f\"\
+          split_positions[{index}].reason_type 不合法\")\n        reason = item.get(\"reason\")\n        if not isinstance(reason,\
+          \ str) or not reason.strip():\n            return _failed(f\"split_positions[{index}].reason 不能为空\")\n        item_confidence\
+          \ = _num(item.get(\"confidence\"))\n        if item_confidence is None:\n            return _failed(f\"split_positions[{index}].confidence\
+          \ 必须是数字\")\n        validated.append({\n            \"after_msgid\": after,\n            \"before_msgid\": before,\n\
+          \            \"reason_type\": reason_type,\n            \"reason\": reason.strip(),\n            \"confidence\"\
+          : item_confidence,\n        })\n    order = {msgid: i for i, msgid in enumerate(ordered_msgids or [])}\n    validated.sort(key=lambda\
+          \ item: order.get(item[\"after_msgid\"], 0))\n    return {\n        \"status\": \"success\",\n        \"split_positions\"\
+          : validated,\n        \"confidence\": confidence,\n        \"error\": None,\n    }"
+        outputs:
+          status:
+            type: string
+            children: null
+          split_positions:
+            type: array[object]
+            children: null
+          confidence:
+            type: number
+            children: null
+          error:
+            type: object
+            children: null
+    - id: '1764810005301'
+      type: custom
+      position:
+        x: 3380
+        y: 420
+      positionAbsolute:
+        x: 3380
+        y: 420
+      width: 244
+      height: 100
+      sourcePosition: right
+      targetPosition: left
+      data:
+        type: end
+        title: 结束：采用第 3 次最终结果
+        desc: 第 3 次校验后的最终输出；如果失败，自建系统最多重新调用一次整个 Dify workflow。
+        outputs:
+        - variable: status
+          value_selector:
+          - '1764810004601'
+          - status
+          value_type: string
+        - variable: split_positions
+          value_selector:
+          - '1764810004601'
+          - split_positions
+          value_type: array[object]
+        - variable: confidence
+          value_selector:
+          - '1764810004601'
+          - confidence
+          value_type: number
+        - variable: error
+          value_selector:
+          - '1764810004601'
+          - error
+          value_type: object
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.7

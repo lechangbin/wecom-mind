@@ -35,6 +35,10 @@ class MockDifyClient:
             return self._run_user_profile_analysis(input_json)
         if workflow.workflow_code == "conversation_segmentation":
             return self._run_conversation_segmentation(input_json)
+        if workflow.workflow_code == "conversation_boundary_detection":
+            return self._run_conversation_boundary_detection(input_json)
+        if workflow.workflow_code == "user_profile_update":
+            return self._run_user_profile_update(input_json)
         if workflow.workflow_code == "intent_detection":
             return self._run_intent_detection(input_json)
         return self._run_reply_generation(input_json)
@@ -128,6 +132,74 @@ class MockDifyClient:
             ]
         }
 
+    def _run_conversation_boundary_detection(self, input_json: dict[str, Any]) -> dict[str, Any]:
+        payload = input_json.get("payload") if isinstance(input_json, dict) else {}
+        payload = payload if isinstance(payload, dict) else {}
+        messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+        if not messages:
+            return {
+                "status": "success",
+                "split_positions": [],
+                "confidence": 1.0,
+                "error": None,
+            }
+
+        return {
+            "status": "success",
+            "split_positions": [],
+            "confidence": 0.88,
+            "error": None,
+        }
+
+    def _run_user_profile_update(self, input_json: dict[str, Any]) -> dict[str, Any]:
+        payload = input_json.get("payload") if isinstance(input_json, dict) else {}
+        payload = payload if isinstance(payload, dict) else {}
+        userid = str(payload.get("userid") or "")
+        conversation = payload.get("conversation") if isinstance(payload.get("conversation"), dict) else {}
+        conversation_no = str(conversation.get("conversation_no") or "")
+        target_messages = (
+            payload.get("target_user_messages")
+            if isinstance(payload.get("target_user_messages"), list)
+            else []
+        )
+        if not userid or not conversation_no or not target_messages:
+            return {
+                "userid": userid,
+                "profile_action": "no_change",
+                "updated_profile": {"summary": "", "facts": []},
+                "changes": {"facts_added": [], "facts_updated": [], "facts_retired": []},
+                "evidence": {"conversation_no": conversation_no, "msgids": []},
+                "confidence": 0.0,
+            }
+
+        msgid = str(target_messages[0].get("msgid") or "")
+        fact = {
+            "fact_id": f"fact_mock_{userid.lower()}",
+            "fact_type": "preference",
+            "label": "回复偏好",
+            "description": "用户在会话中表达了回复偏好或关注点。",
+            "source": "direct",
+            "confidence": 0.82,
+            "evidence_msgids": [msgid] if msgid else [],
+            "evidence_conversation_nos": [conversation_no],
+            "status": "active",
+        }
+        return {
+            "userid": userid,
+            "profile_action": "create",
+            "updated_profile": {
+                "summary": "该用户在本会话中表达了可沉淀的偏好或关注点。",
+                "facts": [fact],
+            },
+            "changes": {
+                "facts_added": [fact],
+                "facts_updated": [],
+                "facts_retired": [],
+            },
+            "evidence": {"conversation_no": conversation_no, "msgids": [msgid] if msgid else []},
+            "confidence": 0.82,
+        }
+
     def _run_user_profile_analysis(self, input_json: dict[str, Any]) -> dict[str, Any]:
         userid = input_json.get("userid") or ""
         messages = input_json.get("recent_messages") or []
@@ -195,6 +267,8 @@ class DifyHttpClient:
                 settings.dify_api_key,
                 settings.dify_group_knowledge_reply_api_key,
                 settings.dify_chat_proactive_reminder_api_key,
+                settings.dify_conversation_boundary_detection_api_key,
+                settings.dify_user_profile_update_api_key,
             )
         )
         if not settings.dify_base_url or not has_any_api_key:
@@ -207,6 +281,10 @@ class DifyHttpClient:
         self.workflow_api_keys = {
             "group_knowledge_reply": settings.dify_group_knowledge_reply_api_key,
             "chat_proactive_reminder": settings.dify_chat_proactive_reminder_api_key,
+            "conversation_boundary_detection": (
+                settings.dify_conversation_boundary_detection_api_key
+            ),
+            "user_profile_update": settings.dify_user_profile_update_api_key,
         }
         self.user = settings.dify_user
         self.max_retries = max(settings.dify_max_retries, 0)
@@ -461,6 +539,8 @@ def _looks_like_business_output(payload: dict[str, Any]) -> bool:
             "segments",
             "userid",
             "profile_action",
+            "split_positions",
+            "updated_profile",
             "facts_to_add",
         )
     )

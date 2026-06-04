@@ -162,6 +162,49 @@ def test_real_client_uses_workflow_id_endpoint_when_available():
     assert result == {"action": "ignore", "confidence": 0.4}
 
 
+def test_real_client_uses_ai_memory_workflow_specific_api_keys():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.setdefault("authorization", []).append(request.headers.get("authorization"))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "status": "succeeded",
+                    "outputs": {
+                        "status": "success",
+                        "split_positions": [],
+                        "confidence": 1,
+                        "error": None,
+                    },
+                }
+            },
+        )
+
+    client = DifyHttpClient(
+        real_settings(
+            dify_conversation_boundary_detection_api_key="boundary-key",
+            dify_user_profile_update_api_key="profile-key",
+        ),
+        http_client=make_http_client(handler),
+    )
+
+    client.run_workflow(
+        AiWorkflow(
+            workflow_code="conversation_boundary_detection",
+            workflow_name="会话切分",
+            version="v1",
+            response_mode="blocking",
+            input_schema={},
+            output_schema={},
+        ),
+        {"payload": {}},
+    )
+
+    assert seen["authorization"] == ["Bearer boundary-key"]
+
+
 def test_webhook_mode_builds_webhook_client():
     client = build_dify_client(Settings(dify_client_mode="webhook"))
 
