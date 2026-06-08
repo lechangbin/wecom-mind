@@ -1,17 +1,22 @@
 import logging
+from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.api.admin_frontend import router as admin_frontend_router
 from app.api.admin_analytics import router as admin_analytics_router
 from app.api.ai_runs import router as ai_runs_router
 from app.api.ai_memory import router as ai_memory_router
 from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
+from app.api.messages import router as messages_router
 from app.api.outbox import router as outbox_router
+from app.api.profiles import router as profiles_router
 from app.api.proactive_replies import router as proactive_replies_router
 from app.api.scheduled_intents import router as scheduled_intents_router
+from app.api.system import router as system_router
 from app.api.triggers import router as triggers_router
 from app.api.wecom import router as wecom_router
 from app.config.settings import Settings, get_settings
@@ -51,6 +56,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.wecom_callback_verifier = build_wecom_callback_verifier(settings)
     app.state.dify_client = build_dify_client(settings)
     app.state.wecom_message_sender = build_wecom_message_sender(settings)
+    app.state.ai_memory_full_test_lock = Lock()
+    app.state.ai_memory_full_test_state = {
+        "status": "idle",
+        "current": None,
+        "last_result": None,
+        "last_error": None,
+    }
 
     register_middleware(app)
     register_exception_handlers(app)
@@ -62,8 +74,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proactive_replies_router)
     app.include_router(scheduled_intents_router)
     app.include_router(admin_analytics_router)
+    app.include_router(messages_router)
+    app.include_router(admin_frontend_router)
     app.include_router(conversations_router)
     app.include_router(ai_memory_router)
+    app.include_router(profiles_router)
+    app.include_router(system_router)
 
     return app
 

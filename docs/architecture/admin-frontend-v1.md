@@ -10,6 +10,7 @@ V1 管理员前端优先解决四类问题：
 2. 链路可追踪：一条消息从入库、触发、AI run、outbox 到发送结果可以串起来看。
 3. AI 结果可审查：会话切分、画像更新、回复画像化是否按证据生成。
 4. 实机测试可操作：能手动触发会话/画像全量测试，能查看最近错误和结果。
+5. 列表性能稳定：消息列表、响应列表和会话列表必须服务端分页，并通过前端查询缓存和 SSE 增量更新避免全量刷新。
 
 V1 不做：
 
@@ -25,7 +26,7 @@ V1 不做：
 前端建议采用单页应用：
 
 ```text
-React + TypeScript + Vite
+React + TypeScript + Vite + TanStack Query
 ```
 
 理由：
@@ -42,9 +43,17 @@ React + TypeScript + Vite
 生产化后续：再决定是否拆分 nginx / 前后端独立部署
 ```
 
+实时更新形态：
+
+```text
+FastAPI SSE -> EventSource -> TanStack Query cache patch
+```
+
+V1 使用 SSE 单向推送，不使用 WebSocket。当前管理端只需要后端把状态变化推给前端，不需要前端通过长连接下发控制命令。
+
 ## 3. 信息架构
 
-V1 建议 7 个主页面。
+V1 当前包含 8 个主页面。
 
 ### 3.1 总览
 
@@ -67,34 +76,65 @@ V1 建议 7 个主页面。
 - `GET /api/dashboard/overview`
 - `GET /api/stats/messages`
 - `GET /api/stats/workflows`
+- `GET /api/system/workers`
 
-缺口：
+当前落地：
 
-- 还没有统一 worker 状态接口。V1 可以先用日志和健康提示占位，后续补 `GET /api/system/workers`。
+- 总览页已展示 worker 状态摘要。
+- `GET /api/system/workers` 对进程内 API 和 AI memory full-test 给出真实状态；长连接 worker、补漏 worker 第一版按配置推断启用状态，标记为“配置推断/未观测”。
 
-### 3.2 消息与群聊
+### 3.1.1 响应消息
 
-目的：查看真实入库消息，确认 userid/msgid/chatid/sender_type 是否正确。
+目的：实时查看所有已触发回复的消息，包括 @ 回复和非 @ 主动回复。
 
 展示：
 
-- 群列表。
-- 群消息列表。
+- 触发回答的消息列表。
+- 顶层状态：正在回复、已回复、异常。
+- 节点流：消息入库、触发/认领、Dify 调用、Outbox 创建、企微发送。
+- 每个节点独立状态：pending、running、success、error、skipped。
+
+接口：
+
+- `GET /api/admin/reply-tasks`
+- `GET /api/admin/events/stream`
+
+实时策略：
+
+- 页面初始进入时按筛选条件分页拉取。
+- 后端通过 SSE 推送状态变化。
+- 前端只 patch 当前缓存中的对应任务；缺失项才局部刷新当前查询，不整页刷新。
+
+### 3.2 消息与群聊
+
+目的：查看完整群消息视图，确认 userid/msgid/chatid/sender_type 是否正确，并避免历史上消息列表全量加载导致的刷新缓慢。
+
+展示：
+
+- 当日完整消息列表，包含用户消息和已发送机器人回复。
+- 按开始日期和截止日期筛选，最大跨度 7 天。
+- 当前筛选视图内正文模糊搜索。
+- 默认按 `canonical_message_id` 展示业务去重视图。
+- 提供“显示来源重复记录”开关，用于排查 `aibot_ws` 和 `wecom_reconcile` 等多来源入库差异。
+- 机器人回复来自 `outbox_messages.status=sent`，作为 `sender_type=bot` 的虚拟消息行展示，不与物理来源重复记录混淆。
 - 消息详情。
 - 用户消息 / 机器人消息筛选。
 - @ 消息筛选。
 - msgid、userid、create_time、sender_type、mentioned_bot。
 
-已有接口：
+接口：
 
-- `GET /api/chats`
-- `GET /api/chats/{chatid}/messages`
+- `GET /api/messages`
 - `GET /api/stats/messages`
 
-缺口：
+性能约束：
 
-- 消息列表当前筛选能力偏弱，后续建议补 `userid`、`sender_type`、`mentioned_bot`、`start/end` 查询参数。
-- 消息详情页可以先复用列表项，后续补 `GET /api/messages/{message_id}`。
+- 后端必须使用数据库过滤、排序和分页。
+- 默认过滤掉 `canonical_message_id != id` 的来源重复记录，保留未归并消息。
+- 完整消息接口必须合并 `messages` 与已发送 `outbox_messages`，但不得展示 pending/failed/canceled 的未发送机器人消息。
+- 前端按筛选条件构造稳定 query key，并缓存分页结果。
+- 切换页面再返回时先显示缓存，再后台静默刷新。
+- 不允许为了更新状态重新全量加载消息列表。
 
 ### 3.3 AI 运行记录
 
@@ -109,7 +149,7 @@ V1 建议 7 个主页面。
 - error_message。
 - 一键跳转关联消息、outbox、会话或画像。
 
-已有接口：
+接口：
 
 - `GET /api/ai-runs`
 - `GET /api/ai-runs/{run_id}`
@@ -132,11 +172,15 @@ V1 建议 7 个主页面。
 - external_msgid、error_code、error_message、retry_count。
 - 手动发送按钮。
 
-已有接口：
+接口：
 
 - `GET /api/outbox-messages`
 - `GET /api/outbox-messages/{outbox_id}`
 - `POST /api/outbox-messages/{outbox_id}/send`
+
+分页：
+
+- `GET /api/outbox-messages` 支持 `status/chatid/limit/offset`，前端不得一次性拉取全部发送记录。
 
 V1 操作限制：
 
@@ -152,17 +196,19 @@ V1 操作限制：
 - conversation_segments 列表。
 - conversation_no、chatid、起止消息、起止时间、participants、confidence、status。
 - 会话详情内展示该段消息。
+- 按会话开始时间筛选日期。
+- 关键词搜索优先匹配 AI 摘要，其次匹配会话内消息正文。
 - 手动触发某天全量测试。
 
-已有接口：
+接口：
 
 - `GET /api/conversations`
 - `GET /api/conversations/{conversation_no}`
+- `GET /api/conversations/{conversation_no}/messages`
 - `POST /api/ai-memory/full-test/run`
 
 缺口：
 
-- 会话详情目前没有直接返回段内消息，建议补 `GET /api/conversations/{conversation_no}/messages`。
 - 手动运行结果需要展示 `chat_results`、`profile_results`，当前接口已返回。
 
 ### 3.6 用户画像
@@ -178,21 +224,15 @@ V1 操作限制：
 - evidence_msgids、evidence_conversation_nos。
 - 画像版本历史。
 
-已有接口：
+接口：
 
 - `GET /api/users`
-- 历史 `GET /api/users/{userid}/profile` 文件存在，但当前主应用未挂载，V1 需要重新接入或重建。
+- `GET /api/users/{userid}/profile`
+- `GET /api/users/{userid}/profile/versions`
 
 缺口：
 
-- 需要补新版用户画像详情接口，建议：
-
-```http
-GET /api/users/{userid}/profile
-GET /api/users/{userid}/profile/versions
-```
-
-V1 不做人工审核流，只做查看和排查。人工审核、回滚、版本对比放到 v0.4。
+- 当前用户画像页只读。人工审核、回滚和版本对比属于后续运营功能。
 
 ### 3.7 实机测试面板
 
@@ -208,17 +248,25 @@ V1 不做人工审核流，只做查看和排查。人工审核、回滚、版�
   - 指定日期和 chatid 运行 `POST /api/ai-memory/full-test/run`。
   - 指定 outbox 手动发送。
 
+运行锁：
+
+- 同一时间只允许一个 AI memory full-test。
+- 上一次未完成时，后端返回 `409 DUPLICATED`。
+- 前端禁用开始按钮，并展示当前运行中任务摘要。
+
 已有接口：
 
 - `GET /health`
+- `GET /api/system/config-summary`
 - `POST /api/ai-memory/full-test/run`
+- `GET /api/ai-memory/full-test/status`
 - `GET /api/ai-runs`
 - `GET /api/outbox-messages`
 
-缺口：
+当前落地：
 
-- 需要补配置摘要接口，建议 `GET /api/system/config-summary`，只返回脱敏字段和开关，不返回密钥。
-- 需要补 worker 状态接口，建议 `GET /api/system/workers`。
+- `GET /api/system/config-summary` 已返回脱敏配置摘要，只暴露模式、开关、计数和密钥是否配置，不返回 Bot Secret、Dify API Key 等敏感值。
+- 实机测试页已展示当前配置摘要、最近 20 条 AI run、最近 20 条 failed outbox 和最近一次 full-test 结果。
 
 ## 4. 页面导航
 
@@ -242,6 +290,25 @@ AI 运行记录
 总览 -> 错误卡片 -> AI run / outbox / worker 日志
 实机测试 -> ai-memory full-test -> 会话沉淀和用户画像
 ```
+
+## 4.1 当前落地状态
+
+已完成页面：
+
+- 总览。
+- 响应消息。
+- 完整消息。
+- AI 运行记录。
+- 发送记录 Outbox。
+- 会话审查。
+- 用户画像。
+- 实机测试。
+
+仍保留为后续接口缺口：
+
+- AI run 关联对象派生字段。
+- 消息详情页：当前完整消息页已满足列表排障，单条消息详情可以在后续补充。
+- Worker 真实心跳：当前 `wecom_aibot_worker`、`message_reconcile_worker` 只能展示配置推断状态，后续如需要精确在线状态，应由 worker 定期写入心跳。
 
 ## 5. 前端 Module 划分
 
@@ -315,23 +382,27 @@ P0 已有或必须补齐：
 
 - `GET /health`
 - `GET /api/dashboard/overview`
-- `GET /api/chats`
-- `GET /api/chats/{chatid}/messages`
+- `GET /api/system/config-summary`
+- `GET /api/system/workers`
+- `GET /api/admin/reply-tasks`
+- `GET /api/admin/events/stream`
+- `GET /api/messages`
 - `GET /api/ai-runs`
 - `GET /api/ai-runs/{run_id}`
 - `GET /api/outbox-messages`
 - `GET /api/conversations`
-- `GET /api/conversations/{conversation_no}`
+- `GET /api/conversations/{conversation_no}/messages`
 - `POST /api/ai-memory/full-test/run`
+- `GET /api/ai-memory/full-test/status`
 - `GET /api/users`
 - `GET /api/users/{userid}/profile`
+- `GET /api/users/{userid}/profile/versions`
 
 P1 建议补齐：
 
-- `GET /api/conversations/{conversation_no}/messages`
-- `GET /api/users/{userid}/profile/versions`
-- `GET /api/system/config-summary`
-- `GET /api/system/workers`
+- AI run 关联对象派生字段。
+- 单条消息详情接口。
+- Worker 真实心跳接口或状态表。
 
 P2 后续：
 

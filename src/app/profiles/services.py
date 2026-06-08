@@ -3,7 +3,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -124,6 +124,34 @@ def get_latest_user_profile(session: Session, userid: str) -> dict[str, Any]:
         .order_by(UserProfileFact.confidence.desc(), UserProfileFact.id.asc())
     ).all()
     return user_profile_to_dict(profile, facts)
+
+
+def list_user_profile_versions(
+    session: Session,
+    userid: str,
+    *,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    total = (
+        session.scalar(
+            select(func.count()).select_from(UserProfile).where(UserProfile.userid == userid)
+        )
+        or 0
+    )
+    profiles = session.scalars(
+        select(UserProfile)
+        .where(UserProfile.userid == userid)
+        .order_by(UserProfile.version.desc(), UserProfile.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [user_profile_to_dict(profile, []) for profile in profiles],
+    }
 
 
 def user_profile_to_dict(

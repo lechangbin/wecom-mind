@@ -15,6 +15,8 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     app_base_url: str = "http://127.0.0.1:8000"
+    admin_web_host: str = "127.0.0.1"
+    admin_web_port: int = 5173
     database_url: str = "sqlite:///./data/app.db"
     redis_url: str | None = None
 
