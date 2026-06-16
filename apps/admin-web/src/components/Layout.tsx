@@ -2,6 +2,7 @@ import {
   Activity,
   BotMessageSquare,
   BrainCircuit,
+  LogOut,
   FlaskConical,
   LayoutDashboard,
   type LucideIcon,
@@ -25,6 +26,8 @@ export type PageKey =
 type Props = {
   activePage: PageKey;
   onPageChange: (page: PageKey) => void;
+  username: string | null;
+  onLogout: () => void;
   children: React.ReactNode;
 };
 
@@ -43,7 +46,7 @@ const navItems: Array<{
   { key: "liveTest", label: "实机测试", icon: FlaskConical }
 ];
 
-export function Layout({ activePage, onPageChange, children }: Props) {
+export function Layout({ activePage, onPageChange, username, onLogout, children }: Props) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -70,6 +73,13 @@ export function Layout({ activePage, onPageChange, children }: Props) {
             );
           })}
         </nav>
+        <div className="sidebar-account">
+          <span>{username ?? "管理员"}</span>
+          <button type="button" onClick={onLogout} title="退出登录">
+            <LogOut size={16} />
+            <span>退出</span>
+          </button>
+        </div>
       </aside>
       <main className="main-panel">{children}</main>
     </div>

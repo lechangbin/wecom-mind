@@ -1,5 +1,6 @@
 import type {
   ApiEnvelope,
+  AdminSession,
   AiRunItem,
   ConversationItem,
   DashboardOverview,
@@ -31,13 +32,16 @@ export class ApiError extends Error {
 }
 
 export async function apiGet<T>(path: string, params?: QueryParams): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}${queryString(params)}`);
+  const response = await fetch(`${API_BASE}${path}${queryString(params)}`, {
+    credentials: "include"
+  });
   return unwrap<T>(response);
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -49,6 +53,10 @@ export function adminEventUrl(): string {
 }
 
 export const api = {
+  adminMe: () => apiGet<AdminSession>("/api/admin/auth/me"),
+  adminLogin: (body: { username: string; password: string }) =>
+    apiPost<AdminSession>("/api/admin/auth/login", body),
+  adminLogout: () => apiPost<AdminSession>("/api/admin/auth/logout", {}),
   health: () => apiGet<Record<string, unknown>>("/health"),
   configSummary: () => apiGet<SystemConfigSummary>("/api/system/config-summary"),
   workers: () => apiGet<{ items: WorkerStatus[] }>("/api/system/workers"),

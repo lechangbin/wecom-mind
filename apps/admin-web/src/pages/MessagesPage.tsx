@@ -43,7 +43,7 @@ export function MessagesPage() {
       <header className="page-header">
         <div>
           <h1>完整消息</h1>
-          <p>按日期范围查看用户消息和已发送机器人消息，最多查询七天。</p>
+          <p>按日期范围查看用户消息和已发送机器人消息，最多查询一个月。</p>
         </div>
       </header>
       <div className="filter-bar">

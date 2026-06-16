@@ -76,16 +76,33 @@ def test_messages_api_filters_by_date_range_and_query_without_full_range_leak(tm
     assert data["items"][0]["sender_type"] == "user"
 
 
-def test_messages_api_rejects_ranges_longer_than_seven_days(tmp_path):
+def test_messages_and_conversations_api_allow_one_month_and_reject_longer_ranges(tmp_path):
     client, _app = make_client(tmp_path)
 
-    response = client.get(
+    messages_response = client.get(
         "/api/messages",
-        params={"start_date": "2026-06-01", "end_date": "2026-06-09"},
+        params={"start_date": "2026-06-01", "end_date": "2026-07-01"},
+    )
+    conversations_response = client.get(
+        "/api/conversations",
+        params={"start_date": "2026-06-01", "end_date": "2026-07-01"},
+    )
+    too_long_response = client.get(
+        "/api/messages",
+        params={"start_date": "2026-06-01", "end_date": "2026-07-02"},
+    )
+    reversed_response = client.get(
+        "/api/messages",
+        params={"start_date": "2026-06-10", "end_date": "2026-06-01"},
     )
 
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "INVALID_ARGUMENT"
+    assert messages_response.status_code == 200
+    assert conversations_response.status_code == 200
+    assert too_long_response.status_code == 400
+    assert too_long_response.json()["error"]["code"] == "INVALID_ARGUMENT"
+    assert too_long_response.json()["error"]["message"] == "最多只能查询一个月内的数据"
+    assert reversed_response.status_code == 400
+    assert reversed_response.json()["error"]["message"] == "开始日期不能晚于截止日期"
 
 
 def test_messages_api_hides_cross_source_duplicates_by_default(tmp_path):

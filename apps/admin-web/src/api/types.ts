@@ -16,6 +16,12 @@ export type Page<T> = {
   items: T[];
 };
 
+export type AdminSession = {
+  auth_enabled: boolean;
+  authenticated: boolean;
+  username: string | null;
+};
+
 export type MessageItem = {
   id: number | string;
   external_msgid: string;

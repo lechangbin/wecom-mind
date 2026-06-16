@@ -11,7 +11,7 @@ from app.core.errors import AppError, ErrorCode
 from app.db.models import AiRun, MentionRequest, Message, OutboxMessage, TriggerEvent
 
 DISPLAY_TZ = timezone(timedelta(hours=8))
-MAX_RANGE_DAYS = 7
+MAX_RANGE_DAYS = 31
 
 
 def list_messages(
@@ -683,9 +683,9 @@ def _date_range(start_date: str | None, end_date: str | None) -> tuple[datetime,
     start = _parse_date(start_date) if start_date else today
     end = _parse_date(end_date) if end_date else start
     if start > end:
-        raise AppError(ErrorCode.INVALID_ARGUMENT, "start_date must be earlier than end_date")
+        raise AppError(ErrorCode.INVALID_ARGUMENT, "开始日期不能晚于截止日期")
     if (end - start).days >= MAX_RANGE_DAYS:
-        raise AppError(ErrorCode.INVALID_ARGUMENT, "date range must be at most 7 days")
+        raise AppError(ErrorCode.INVALID_ARGUMENT, "最多只能查询一个月内的数据")
     local_start = datetime.combine(start, time.min, tzinfo=DISPLAY_TZ)
     local_end = datetime.combine(end + timedelta(days=1), time.min, tzinfo=DISPLAY_TZ)
     return local_start.astimezone(timezone.utc), local_end.astimezone(timezone.utc)
@@ -695,7 +695,7 @@ def _parse_date(value: str) -> date_type:
     try:
         return date_type.fromisoformat(value)
     except ValueError as exc:
-        raise AppError(ErrorCode.INVALID_ARGUMENT, "date must be YYYY-MM-DD") from exc
+        raise AppError(ErrorCode.INVALID_ARGUMENT, "日期格式必须为 YYYY-MM-DD") from exc
 
 
 def _to_utc(value: datetime) -> datetime:

@@ -207,7 +207,7 @@ workflow:
           label: 系统上下文 payload
           type: json_object
           required: true
-          hint: 由自建系统组装，包含触发消息、消息列表、成员列表、已处理记录和意图触发场景。
+          hint: 由自建系统组装，包含触发消息、消息列表、成员列表、已处理记录、意图触发场景，以及按 userid 映射的 user_profiles/profiles_by_userid。
     - id: '1764051002001'
       type: custom
       position:
@@ -223,7 +223,7 @@ workflow:
       data:
         type: code
         title: 代码：整理意图答疑上下文
-        desc: 从 payload 中整理触发问题、消息窗口、候选用户和可引用 msgid，输出知识库检索 query 与 LLM 上下文；不新增用户或消息。
+        desc: 从 payload 中整理触发问题、消息窗口、候选用户、可引用 msgid 和各用户对应画像，输出知识库检索 query 与 LLM 上下文；不新增用户或消息。
         code_language: python3
         variables:
         - variable: payload
@@ -267,27 +267,33 @@ workflow:
                       return value
               return ""
 
+          def _normalize_profile_context(profile, *, conservative=False):
+              profile = _as_dict(profile)
+              if not profile:
+                  return {}
+              usage_policy = {
+                  "use_as_writing_style_only": True,
+                  "do_not_use_as_factual_evidence": True,
+                  "do_not_reveal_profile_source": True,
+              }
+              if conservative:
+                  usage_policy["be_conservative_for_proactive_reply"] = True
+              return {
+                  "userid": _text(profile.get("userid") or profile.get("user_id")),
+                  "summary": _text(profile.get("summary")),
+                  "communication_style": _as_dict(profile.get("communication_style") or profile.get("style") or {}),
+                  "stable_preferences": _safe_list(profile.get("stable_preferences") or profile.get("preferences")),
+                  "recent_focus": _safe_list(profile.get("recent_focus") or profile.get("focus")),
+                  "facts": _safe_list(profile.get("facts"))[:8],
+                  "usage_policy": usage_policy
+              }
+
           def _reply_profile_context(data):
               explicit = _as_dict(data.get("reply_profile_context") or data.get("profile_context") or {})
               raw_profile = _as_dict(data.get("user_profile") or data.get("profile") or {})
               if explicit:
-                  return explicit
-              if not raw_profile:
-                  return {}
-
-              return {
-                  "summary": _text(raw_profile.get("summary")),
-                  "communication_style": _as_dict(raw_profile.get("communication_style") or raw_profile.get("style") or {}),
-                  "stable_preferences": _safe_list(raw_profile.get("stable_preferences") or raw_profile.get("preferences")),
-                  "recent_focus": _safe_list(raw_profile.get("recent_focus") or raw_profile.get("focus")),
-                  "facts": _safe_list(raw_profile.get("facts"))[:8],
-                  "usage_policy": {
-                      "use_as_writing_style_only": True,
-                      "do_not_use_as_factual_evidence": True,
-                      "do_not_reveal_profile_source": True,
-                      "be_conservative_for_proactive_reply": True
-                  }
-              }
+                  return _normalize_profile_context(explicit, conservative=True)
+              return _normalize_profile_context(raw_profile, conservative=True)
 
           def _reply_profile_contexts(data):
               value = (
@@ -296,15 +302,22 @@ workflow:
                   or data.get("user_profiles")
                   or {}
               )
-              if isinstance(value, dict):
-                  return value
               contexts = {}
+              if isinstance(value, dict):
+                  for userid, item in value.items():
+                      context = _normalize_profile_context(item, conservative=True)
+                      if context:
+                          context["userid"] = _text(context.get("userid") or str(userid))
+                          contexts[str(userid)] = context
+                  return contexts
               if isinstance(value, list):
                   for item in value:
                       obj = _as_dict(item)
                       userid = _collect_userid(obj)
-                      if userid:
-                          contexts[userid] = obj
+                      context = _normalize_profile_context(obj, conservative=True)
+                      if userid and context:
+                          context["userid"] = userid
+                          contexts[userid] = context
               return contexts
 
           def main(payload: dict) -> dict:
@@ -350,6 +363,11 @@ workflow:
                   "reply_profile_contexts": profile_contexts,
                   "candidate_userids": sorted(candidate_userids),
                   "known_msgids": sorted(known_msgids),
+                  "profile_selection": {
+                      "use_target_user_profile_only": True,
+                      "profile_contexts_keyed_by_userid": True,
+                      "do_not_apply_one_user_profile_to_another_user": True
+                  },
                   "policy": {
                       "do_not_repeat_handled_records": True,
                       "target_userids_must_come_from_candidate_userids": True,
@@ -431,19 +449,23 @@ workflow:
           text: |-
             你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
 
-            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、reply_profile_context/reply_profile_contexts，以及 Dify 知识库检索结果。
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、按 userid 映射的 reply_profile_contexts、可选兜底 reply_profile_context，以及 Dify 知识库检索结果。
 
             你的任务：
             - 判断当前聊天意图是否适合主动给出知识答疑。
             - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
             - 回复语气不要像被 @ 后直接回答问题，而要像“猜你可能想看这个问题的答案，我补一条……”。
             - 使用画像只调整语气、结构、详略和打扰程度，让主动回复更自然、更少打扰。
+            - 对每个 target_userid，只能使用 reply_profile_contexts[target_userid] 对应画像；不得把一个用户画像用于另一个用户。
+            - 如果同时面向多个用户且画像偏好不同，优先使用更通用、更克制的表达，不要展示画像差异。
             - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
 
             画像使用规则：
             - 画像只能影响表达方式和是否更克制，不能作为事实依据。
             - 当前聊天窗口、候选用户、可引用 msgid 和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 主动回复默认比 @ 回复更短、更谨慎；画像显示用户偏好简洁或低打扰时，宁可 should_send=false。
             - 如果画像提示用户偏好先结论后要点，正文可用一句结论 + 最多 2 条要点。
@@ -765,19 +787,23 @@ workflow:
           text: |-
             你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
 
-            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、reply_profile_context/reply_profile_contexts，以及 Dify 知识库检索结果。
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、按 userid 映射的 reply_profile_contexts、可选兜底 reply_profile_context，以及 Dify 知识库检索结果。
 
             你的任务：
             - 判断当前聊天意图是否适合主动给出知识答疑。
             - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
             - 回复语气不要像被 @ 后直接回答问题，而要像“猜你可能想看这个问题的答案，我补一条……”。
             - 使用画像只调整语气、结构、详略和打扰程度，让主动回复更自然、更少打扰。
+            - 对每个 target_userid，只能使用 reply_profile_contexts[target_userid] 对应画像；不得把一个用户画像用于另一个用户。
+            - 如果同时面向多个用户且画像偏好不同，优先使用更通用、更克制的表达，不要展示画像差异。
             - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
 
             画像使用规则：
             - 画像只能影响表达方式和是否更克制，不能作为事实依据。
             - 当前聊天窗口、候选用户、可引用 msgid 和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 主动回复默认比 @ 回复更短、更谨慎；画像显示用户偏好简洁或低打扰时，宁可 should_send=false。
             - 如果画像提示用户偏好先结论后要点，正文可用一句结论 + 最多 2 条要点。
@@ -1105,19 +1131,23 @@ workflow:
           text: |-
             你是企业微信群的“意图触发知识答疑主动回复”AI 节点，只负责判断与生成，不负责发送企微消息。
 
-            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、reply_profile_context/reply_profile_contexts，以及 Dify 知识库检索结果。
+            你会收到自建系统整理的意图触发消息、聊天窗口、成员列表、已处理记录、候选用户、可引用 msgid、按 userid 映射的 reply_profile_contexts、可选兜底 reply_profile_context，以及 Dify 知识库检索结果。
 
             你的任务：
             - 判断当前聊天意图是否适合主动给出知识答疑。
             - 如果适合，基于知识库检索结果和上下文生成简短、克制、可直接发送的 Markdown 回复。
             - 回复语气不要像被 @ 后直接回答问题，而要像“猜你可能想看这个问题的答案，我补一条……”。
             - 使用画像只调整语气、结构、详略和打扰程度，让主动回复更自然、更少打扰。
+            - 对每个 target_userid，只能使用 reply_profile_contexts[target_userid] 对应画像；不得把一个用户画像用于另一个用户。
+            - 如果同时面向多个用户且画像偏好不同，优先使用更通用、更克制的表达，不要展示画像差异。
             - 如果证据不足、知识库无依据、已处理、低置信度、没有明确目标用户、没有可引用消息，必须不发送。
 
             画像使用规则：
             - 画像只能影响表达方式和是否更克制，不能作为事实依据。
             - 当前聊天窗口、候选用户、可引用 msgid 和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 主动回复默认比 @ 回复更短、更谨慎；画像显示用户偏好简洁或低打扰时，宁可 should_send=false。
             - 如果画像提示用户偏好先结论后要点，正文可用一句结论 + 最多 2 条要点。

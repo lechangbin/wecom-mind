@@ -31,6 +31,10 @@ button {
   padding: 0 12px;
 }
 
+button svg {
+  flex: 0 0 auto;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -115,9 +119,105 @@ th {
   color: #ffffff;
 }
 
+.sidebar-account {
+  border-top: 1px solid #344251;
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
+}
+
+.sidebar-account > span {
+  color: #aeb9c3;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sidebar-account button,
+.primary-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.sidebar-account button {
+  background: #ffffff;
+  color: #17202a;
+  width: 100%;
+}
+
 .main-panel {
   min-width: 0;
   padding: 22px;
+}
+
+.login-shell {
+  align-items: center;
+  background:
+    linear-gradient(135deg, rgba(31, 41, 51, 0.94), rgba(32, 87, 104, 0.88)),
+    #1f2933;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-panel {
+  background: #ffffff;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  box-shadow: 0 22px 60px rgba(18, 30, 43, 0.22);
+  max-width: 420px;
+  padding: 24px;
+  width: 100%;
+}
+
+.login-brand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.login-brand h1,
+.login-brand strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.login-brand p {
+  color: #667785;
+  margin: 4px 0 0;
+}
+
+.login-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form label {
+  color: #5f6f7d;
+  display: grid;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.login-form input {
+  width: 100%;
+}
+
+.primary-button {
+  background: #205768;
+  border-color: #205768;
+  color: #ffffff;
+  min-height: 38px;
+}
+
+.primary-button:hover {
+  background: #184858;
 }
 
 .page-stack {

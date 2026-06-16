@@ -9,6 +9,7 @@ from app.core.errors import AppError, ErrorCode
 from app.core.schema_validator import JsonSchemaValidationError, validate_json_schema
 from app.db.models import AiRun, AiWorkflow, MentionRequest, Message, TriggerEvent, now_utc
 from app.dify.client import DifyClient
+from app.profiles.reply_context import latest_reply_profile_payload
 from app.wecom.mention_requests import mark_failed, mark_running, mark_succeeded
 
 
@@ -49,6 +50,7 @@ def run_dify_workflow_for_trigger(
         return existing
 
     input_json = build_trigger_workflow_input(
+        session=session,
         trigger_event=trigger_event,
         message=message,
         workflow=workflow,
@@ -118,6 +120,7 @@ def get_enabled_workflow(
 
 
 def build_trigger_workflow_input(
+    session: Session,
     *,
     trigger_event: TriggerEvent,
     message: Message,
@@ -125,6 +128,7 @@ def build_trigger_workflow_input(
 ) -> dict[str, Any]:
     if workflow.workflow_code == "group_knowledge_reply":
         return build_group_knowledge_reply_input(
+            session=session,
             trigger_event=trigger_event,
             message=message,
         )
@@ -137,10 +141,13 @@ def build_trigger_workflow_input(
 
 
 def build_group_knowledge_reply_input(
+    session: Session,
     *,
     trigger_event: TriggerEvent,
     message: Message,
 ) -> dict[str, Any]:
+    user_profile = latest_reply_profile_payload(session, message.userid)
+    profile_maps = {message.userid: user_profile} if message.userid and user_profile else {}
     payload = {
         "question": message.content_text or "",
         "message": {
@@ -165,7 +172,10 @@ def build_group_knowledge_reply_input(
                 "create_time": message.create_time.isoformat(),
             }
         ],
-        "user_profile": None,
+        "user_profile": user_profile,
+        "user_profiles": list(profile_maps.values()),
+        "profiles_by_userid": profile_maps,
+        "reply_profile_contexts": profile_maps,
         "image_summaries": [],
         "runtime": {
             "trigger_type": trigger_event.trigger_type,

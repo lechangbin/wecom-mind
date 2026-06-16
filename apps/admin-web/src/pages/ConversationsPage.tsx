@@ -44,7 +44,7 @@ export function ConversationsPage() {
       <header className="page-header">
         <div>
           <h1>会话审查</h1>
-          <p>查看切分成功的会话，搜索优先匹配 AI 摘要。</p>
+          <p>查看切分成功的会话，搜索优先匹配 AI 摘要，最多查询一个月。</p>
         </div>
       </header>
       <div className="filter-bar">

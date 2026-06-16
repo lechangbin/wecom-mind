@@ -207,7 +207,7 @@ workflow:
           label: 系统上下文 payload
           type: json_object
           required: true
-          hint: 由自建系统组装，包含触发消息、群上下文、用户画像摘要、轻量图像信息等。
+          hint: 由自建系统组装，包含触发消息、群上下文、触发用户画像 user_profile，或按 userid 映射的 user_profiles/profiles_by_userid、轻量图像信息等。
     - id: '1764050002001'
       type: custom
       position:
@@ -223,7 +223,7 @@ workflow:
       data:
         type: code
         title: 代码：提取答疑上下文
-        desc: 从 payload 中提取问题文本、触发消息和群上下文，生成知识库检索 query 与给 LLM 使用的压缩上下文；不编造 msgid 或 userid。
+        desc: 从 payload 中提取问题文本、触发消息、群上下文和触发用户对应画像，生成知识库检索 query 与给 LLM 使用的压缩上下文；不编造 msgid 或 userid。
         code_language: python3
         variables:
         - variable: payload
@@ -254,13 +254,21 @@ workflow:
                       return value.strip()
               return ""
 
-          def _reply_profile_context(data, profile):
-              explicit = _as_dict(data.get("reply_profile_context") or data.get("profile_context") or {})
-              if explicit:
-                  return explicit
+          def _collect_userid(item):
+              obj = _as_dict(item)
+              for key in ("userid", "user_id", "sender_userid", "from_userid", "member_userid"):
+                  value = _text(obj.get(key))
+                  if value:
+                      return value
+              return ""
 
+          def _normalize_profile_context(profile):
+              profile = _as_dict(profile)
+              if not profile:
+                  return {}
               facts = _safe_list(profile.get("facts"))
               return {
+                  "userid": _text(profile.get("userid"), profile.get("user_id")),
                   "summary": _text(profile.get("summary")),
                   "communication_style": _as_dict(profile.get("communication_style") or profile.get("style") or {}),
                   "stable_preferences": _safe_list(profile.get("stable_preferences") or profile.get("preferences")),
@@ -274,12 +282,47 @@ workflow:
                   }
               }
 
+          def _profile_contexts(data):
+              value = (
+                  data.get("reply_profile_contexts")
+                  or data.get("profiles_by_userid")
+                  or data.get("user_profiles")
+                  or {}
+              )
+              contexts = {}
+              if isinstance(value, dict):
+                  for userid, item in value.items():
+                      context = _normalize_profile_context(item)
+                      if context:
+                          context["userid"] = _text(context.get("userid"), str(userid))
+                          contexts[str(userid)] = context
+                  return contexts
+              if isinstance(value, list):
+                  for item in value:
+                      obj = _as_dict(item)
+                      userid = _collect_userid(obj)
+                      context = _normalize_profile_context(obj)
+                      if userid and context:
+                          context["userid"] = userid
+                          contexts[userid] = context
+              return contexts
+
+          def _selected_reply_profile_context(data, profile_contexts, fallback_profile, trigger_userid):
+              explicit = _as_dict(data.get("reply_profile_context") or data.get("profile_context") or {})
+              if explicit:
+                  return _normalize_profile_context(explicit)
+              if trigger_userid and trigger_userid in profile_contexts:
+                  return profile_contexts[trigger_userid]
+              return _normalize_profile_context(fallback_profile)
+
           def main(payload: dict) -> dict:
               data = _as_dict(payload)
               message = _as_dict(data.get("message") or data.get("trigger_message") or data.get("trigger"))
               group = _as_dict(data.get("group") or data.get("chat") or {})
               profile = _as_dict(data.get("user_profile") or data.get("profile") or {})
-              reply_profile_context = _reply_profile_context(data, profile)
+              trigger_userid = _text(data.get("userid"), message.get("userid"), message.get("sender_userid"))
+              profile_contexts = _profile_contexts(data)
+              reply_profile_context = _selected_reply_profile_context(data, profile_contexts, profile, trigger_userid)
               query = _text(
                   data.get("question"),
                   data.get("query"),
@@ -290,13 +333,19 @@ workflow:
               trigger_msgid = _text(data.get("trigger_msgid"), message.get("msgid"))
               context = {
                   "trigger_msgid": trigger_msgid,
-                  "trigger_userid": _text(data.get("userid"), message.get("userid"), message.get("sender_userid")),
+                  "trigger_userid": trigger_userid,
                   "groupid": _text(data.get("groupid"), group.get("groupid"), group.get("chatid")),
                   "question": query,
                   "trigger_message": message,
                   "recent_messages": _safe_list(data.get("recent_messages") or data.get("messages")),
                   "user_profile": profile,
                   "reply_profile_context": reply_profile_context,
+                  "reply_profile_contexts": profile_contexts,
+                  "profile_selection": {
+                      "selected_userid": trigger_userid,
+                      "use_only_selected_user_profile": True,
+                      "do_not_apply_other_users_profiles": True
+                  },
                   "image_summaries": _safe_list(data.get("image_summaries") or data.get("light_images") or data.get("images")),
               }
               return {
@@ -365,7 +414,7 @@ workflow:
             你是企业微信群的“群主题内部知识答疑”AI 节点，只负责判断与生成，不负责发送企微消息。
 
             你会收到：
-            1. 自建系统传入的触发消息、群上下文、reply_profile_context/user_profile 和轻量图像信息。
+            1. 自建系统传入的触发消息、群上下文、按触发用户选出的 reply_profile_context、可选的 reply_profile_contexts/user_profile 和轻量图像信息。
             2. Dify 知识库检索结果。
 
             你的任务：
@@ -373,11 +422,14 @@ workflow:
             - 如果不属于范围，必须输出 out_of_scope，不要输出可发送回答正文。
             - 如果属于范围，只能基于上下文和知识库检索结果生成 Markdown 答案。
             - 使用 reply_profile_context 调整表达方式，让回复更像熟悉项目上下文的协作者，而不是模板客服。
+            - 只能使用 profile_selection.selected_userid 对应的 reply_profile_context；不得把其他用户画像用于当前回复。
 
             画像使用规则：
             - 画像只能影响语气、结构、详略和承接方式，不能作为事实依据。
             - 当前触发消息、群上下文和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 如果画像提示用户偏好“先结论后要点”，优先用一句结论 + 2 到 3 条要点。
             - 如果画像提示用户偏好简洁，减少客套、铺垫和重复解释。
@@ -649,7 +701,7 @@ workflow:
             你是企业微信群的“群主题内部知识答疑”AI 节点，只负责判断与生成，不负责发送企微消息。
 
             你会收到：
-            1. 自建系统传入的触发消息、群上下文、reply_profile_context/user_profile 和轻量图像信息。
+            1. 自建系统传入的触发消息、群上下文、按触发用户选出的 reply_profile_context、可选的 reply_profile_contexts/user_profile 和轻量图像信息。
             2. Dify 知识库检索结果。
 
             你的任务：
@@ -657,11 +709,14 @@ workflow:
             - 如果不属于范围，必须输出 out_of_scope，不要输出可发送回答正文。
             - 如果属于范围，只能基于上下文和知识库检索结果生成 Markdown 答案。
             - 使用 reply_profile_context 调整表达方式，让回复更像熟悉项目上下文的协作者，而不是模板客服。
+            - 只能使用 profile_selection.selected_userid 对应的 reply_profile_context；不得把其他用户画像用于当前回复。
 
             画像使用规则：
             - 画像只能影响语气、结构、详略和承接方式，不能作为事实依据。
             - 当前触发消息、群上下文和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 如果画像提示用户偏好“先结论后要点”，优先用一句结论 + 2 到 3 条要点。
             - 如果画像提示用户偏好简洁，减少客套、铺垫和重复解释。
@@ -939,7 +994,7 @@ workflow:
             你是企业微信群的“群主题内部知识答疑”AI 节点，只负责判断与生成，不负责发送企微消息。
 
             你会收到：
-            1. 自建系统传入的触发消息、群上下文、reply_profile_context/user_profile 和轻量图像信息。
+            1. 自建系统传入的触发消息、群上下文、按触发用户选出的 reply_profile_context、可选的 reply_profile_contexts/user_profile 和轻量图像信息。
             2. Dify 知识库检索结果。
 
             你的任务：
@@ -947,11 +1002,14 @@ workflow:
             - 如果不属于范围，必须输出 out_of_scope，不要输出可发送回答正文。
             - 如果属于范围，只能基于上下文和知识库检索结果生成 Markdown 答案。
             - 使用 reply_profile_context 调整表达方式，让回复更像熟悉项目上下文的协作者，而不是模板客服。
+            - 只能使用 profile_selection.selected_userid 对应的 reply_profile_context；不得把其他用户画像用于当前回复。
 
             画像使用规则：
             - 画像只能影响语气、结构、详略和承接方式，不能作为事实依据。
             - 当前触发消息、群上下文和知识库检索结果优先级高于画像；冲突时忽略画像。
+            - 画像内容只能被隐式吸收为表达策略，不得复述、引用、解释或暗示画像中的标签、偏好、事实、总结。
             - 不要在正文中说“根据你的画像”“我记得你喜欢”“系统记录显示”“你的个人偏好是”。
+            - 不要输出任何与画像有关的说明，包括“我会更简洁地说”“按你的偏好”这类暴露调整依据的话。
             - 不要暴露当前群聊中未公开出现过的个人信息或推断。
             - 如果画像提示用户偏好“先结论后要点”，优先用一句结论 + 2 到 3 条要点。
             - 如果画像提示用户偏好简洁，减少客套、铺垫和重复解释。

@@ -23,6 +23,8 @@ from app.wecom.mention_requests import (
 from app.wecom.schemas import MessageIngestRequest
 from app.wecom.services import ingest_message
 
+WECOM_MCP_MAX_HISTORY_SECONDS = 7 * 24 * 60 * 60 - 60
+
 
 class WeComHistoryMessageSource(Protocol):
     def fetch_messages(
@@ -42,9 +44,17 @@ def calculate_reconcile_window(
     lookback_seconds: int,
     overlap_seconds: int,
 ) -> tuple[datetime, datetime]:
+    now = _to_utc(now)
     if last_pulled_at is None:
-        return now - timedelta(seconds=lookback_seconds), now
-    return last_pulled_at - timedelta(seconds=overlap_seconds), now
+        start_time = now - timedelta(seconds=lookback_seconds)
+    else:
+        start_time = _to_utc(last_pulled_at) - timedelta(seconds=overlap_seconds)
+
+    earliest_allowed_start = now - timedelta(seconds=WECOM_MCP_MAX_HISTORY_SECONDS)
+    if start_time < earliest_allowed_start:
+        start_time = earliest_allowed_start
+
+    return start_time, now
 
 
 def run_message_reconcile_once(

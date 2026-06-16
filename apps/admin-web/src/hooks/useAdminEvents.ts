@@ -3,11 +3,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { adminEventUrl } from "../api/client";
 import type { AdminEvent, Page, ReplyTask } from "../api/types";
 
-export function useAdminEvents() {
+export function useAdminEvents(enabled: boolean) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const source = new EventSource(adminEventUrl());
+    if (!enabled) {
+      return undefined;
+    }
+    const source = new EventSource(adminEventUrl(), { withCredentials: true });
     source.onmessage = (event) => {
       const adminEvent = JSON.parse(event.data) as AdminEvent;
       if (adminEvent.event_type !== "reply_task_updated") {
@@ -36,5 +39,5 @@ export function useAdminEvents() {
       }
     };
     return () => source.close();
-  }, [queryClient]);
+  }, [enabled, queryClient]);
 }
