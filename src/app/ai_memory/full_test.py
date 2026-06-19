@@ -128,15 +128,18 @@ def run_conversation_boundary_detection(
     window: DayWindow,
     messages: list[Message],
     dify_client: DifyClient,
+    force: bool = False,
 ) -> dict[str, Any]:
     existing_segments = _existing_segments_in_window(session, chatid, window)
-    if existing_segments:
+    if existing_segments and not force:
         return {
             "chatid": chatid,
             "run_id": None,
             "status": "reused",
             "segment_count": len(existing_segments),
             "segments": [_segment_to_result(segment) for segment in existing_segments],
+            "force": False,
+            "superseded_count": 0,
             "error": None,
         }
 
@@ -168,6 +171,7 @@ def run_conversation_boundary_detection(
         if output_json["status"] != "success":
             raise AiMemoryFullTestValidationError(str(output_json.get("error") or "failed"))
         ranges = _ranges_from_split_positions(output_json, messages)
+        superseded_count = _supersede_segments(existing_segments) if force else 0
         segments = _write_conversation_segments(
             session,
             ai_run=ai_run,
@@ -194,6 +198,8 @@ def run_conversation_boundary_detection(
         "status": ai_run.status,
         "segment_count": len(segments),
         "segments": [_segment_to_result(segment) for segment in segments],
+        "force": force,
+        "superseded_count": superseded_count if ai_run.status == "success" else 0,
         "error": ai_run.error_message,
     }
 
@@ -204,6 +210,8 @@ def run_user_profile_update_for_segment(
     segment: ConversationSegment,
     userid: str,
     dify_client: DifyClient,
+    force_rewrite: bool = False,
+    reset_current_profile: bool = False,
 ) -> dict[str, Any]:
     workflow = get_enabled_workflow(
         session,
@@ -216,7 +224,7 @@ def run_user_profile_update_for_segment(
         for message in messages
         if message.userid == userid and message.sender_type == "user"
     ]
-    current_profile = _latest_profile(session, userid)
+    current_profile = None if reset_current_profile else _latest_profile(session, userid)
     input_json = {
         "payload": _build_profile_payload(
             segment=segment,
@@ -224,6 +232,8 @@ def run_user_profile_update_for_segment(
             messages=messages,
             target_messages=target_messages,
             current_profile=current_profile,
+            force_rewrite=force_rewrite,
+            reset_current_profile=reset_current_profile,
         )
     }
     validate_json_schema(input_json, workflow.input_schema)
@@ -405,10 +415,19 @@ def _write_conversation_segments(
                 ConversationSegment.chatid == chatid,
                 ConversationSegment.start_message_id == start_message.id,
                 ConversationSegment.end_message_id == end_message.id,
-                ConversationSegment.status == "active",
             )
         )
         if existing:
+            segment_messages = _messages_between(session, chatid, start_message, end_message)
+            existing.ai_run_id = ai_run.id
+            existing.title = f"AI 全量测试会话 {index}"
+            existing.summary = "系统根据 Dify 切分点从消息库生成的会话片段。"
+            existing.keywords = []
+            existing.participants = _participants(segment_messages)
+            existing.confidence = max(0.0, min(confidence, 1.0))
+            existing.status = "active"
+            existing.updated_at = now_utc()
+            session.flush()
             written.append(existing)
             continue
 
@@ -433,6 +452,14 @@ def _write_conversation_segments(
         session.flush()
         written.append(segment)
     return written
+
+
+def _supersede_segments(segments: list[ConversationSegment]) -> int:
+    updated_at = now_utc()
+    for segment in segments:
+        segment.status = "superseded"
+        segment.updated_at = updated_at
+    return len(segments)
 
 
 def _existing_segments_in_window(
@@ -503,6 +530,8 @@ def _build_profile_payload(
     messages: list[Message],
     target_messages: list[Message],
     current_profile: UserProfile | None,
+    force_rewrite: bool = False,
+    reset_current_profile: bool = False,
 ) -> dict[str, Any]:
     return {
         "userid": userid,
@@ -518,9 +547,11 @@ def _build_profile_payload(
         "target_user_messages": [_message_payload(message) for message in target_messages],
         "current_profile": _current_profile_payload(current_profile),
         "runtime": {
-            "mode": "full_test",
+            "mode": "force_rewrite" if force_rewrite else "full_test",
             "language": "zh-CN",
             "workflow_code": "user_profile_update",
+            "force_rewrite": force_rewrite,
+            "reset_current_profile": reset_current_profile,
         },
     }
 

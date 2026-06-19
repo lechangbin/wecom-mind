@@ -48,12 +48,15 @@ def run_conversation_segmentation(
         window=DayWindow(start=start_time, end=end_time),
         messages=messages,
         dify_client=dify_client,
+        force=payload.force,
     )
     session.commit()
 
     return {
         "run_id": result["run_id"],
         "status": result["status"],
+        "force": result.get("force", payload.force),
+        "superseded_count": result.get("superseded_count", 0),
         "segments": [
             conversation_segment_to_dict(session.get(ConversationSegment, item["id"]))
             for item in result.get("segments", [])

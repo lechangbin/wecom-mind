@@ -1,5 +1,6 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RefreshCcw, UserRoundCog } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { UserProfile } from "../api/types";
 import { ErrorPanel } from "../components/ErrorPanel";
@@ -11,8 +12,10 @@ import { compactTime } from "../utils/date";
 const LIMIT = 25;
 
 export function ProfilesPage() {
+  const queryClient = useQueryClient();
   const [offset, setOffset] = useState(0);
   const [selectedUserid, setSelectedUserid] = useState<string | null>(null);
+  const [generationNotice, setGenerationNotice] = useState("");
   const users = useQuery({
     queryKey: ["users", offset],
     queryFn: () => api.users({ limit: LIMIT, offset }),
@@ -31,6 +34,41 @@ export function ProfilesPage() {
     enabled: Boolean(selectedUserid),
     staleTime: 60_000
   });
+  const generateProfile = useMutation({
+    mutationFn: (force: boolean) => api.generateUserProfile(selectedUserid as string, { force }),
+    onSuccess: (result) => {
+      if (result.force && result.profile_update_count > 0) {
+        setGenerationNotice(
+          `已基于 ${result.conversation_count} 条会话强制重写画像，写入 ${result.profile_update_count} 次画像`
+        );
+      } else if (result.force) {
+        setGenerationNotice(
+          `已检查 ${result.conversation_count} 条会话，Dify 未生成可重写画像，保留原画像`
+        );
+      } else if (result.profile_update_count === 0) {
+        setGenerationNotice(`已检查 ${result.conversation_count} 条会话，Dify 判定无新增画像`);
+      } else {
+        setGenerationNotice(`已检查 ${result.conversation_count} 条会话，更新 ${result.profile_update_count} 次画像`);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["users"] });
+      void queryClient.invalidateQueries({ queryKey: ["userProfile", selectedUserid] });
+      void queryClient.invalidateQueries({ queryKey: ["userProfileVersions", selectedUserid] });
+    }
+  });
+  const runProfileGeneration = (force: boolean) => {
+    setGenerationNotice("");
+    if (!selectedUserid) {
+      setGenerationNotice("请先选择一个用户。");
+      return;
+    }
+    generateProfile.mutate(force);
+  };
+  useEffect(() => {
+    const firstUserid = users.data?.items[0]?.userid;
+    if (!selectedUserid && firstUserid) {
+      setSelectedUserid(firstUserid);
+    }
+  }, [selectedUserid, users.data?.items]);
 
   return (
     <section className="page-stack">
@@ -39,8 +77,29 @@ export function ProfilesPage() {
           <h1>用户画像</h1>
           <p>查看当前画像、证据事实和版本历史。</p>
         </div>
+        <div className="header-actions">
+          <button
+            className="primary-button"
+            type="button"
+            disabled={generateProfile.isPending || users.isLoading || (users.data?.items.length ?? 0) === 0}
+            onClick={() => runProfileGeneration(false)}
+          >
+            <UserRoundCog size={16} />
+            {generateProfile.isPending ? "生成中" : "生成画像"}
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={generateProfile.isPending || users.isLoading || (users.data?.items.length ?? 0) === 0}
+            onClick={() => runProfileGeneration(true)}
+          >
+            <RefreshCcw size={16} />
+            强制重写
+          </button>
+        </div>
       </header>
-      <ErrorPanel error={users.error || profile.error || versions.error} />
+      <ErrorPanel error={users.error || profile.error || versions.error || generateProfile.error} />
+      {generationNotice ? <div className="notice-panel">{generationNotice}</div> : null}
       <div className="content-split">
         <section className="panel">
           <table>

@@ -134,7 +134,8 @@ th {
 }
 
 .sidebar-account button,
-.primary-button {
+.primary-button,
+.secondary-button {
   align-items: center;
   display: inline-flex;
   gap: 8px;
@@ -220,6 +221,17 @@ th {
   background: #184858;
 }
 
+.secondary-button {
+  background: #ffffff;
+  border-color: #b6c6d3;
+  color: #205768;
+  min-height: 38px;
+}
+
+.secondary-button:hover {
+  background: #edf5f7;
+}
+
 .page-stack {
   display: flex;
   flex-direction: column;
@@ -231,6 +243,13 @@ th {
   display: flex;
   gap: 16px;
   justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .page-header h1 {
@@ -482,6 +501,63 @@ th {
   display: flex;
   gap: 10px;
   padding: 10px 12px;
+}
+
+.notice-panel {
+  background: #e7f7ed;
+  border: 1px solid #9bd4b3;
+  border-radius: 8px;
+  color: #24734a;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(23, 32, 42, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 50;
+}
+
+.modal-panel {
+  background: #ffffff;
+  border: 1px solid #dce3ea;
+  border-radius: 8px;
+  box-shadow: 0 20px 58px rgba(18, 30, 43, 0.24);
+  display: grid;
+  gap: 16px;
+  max-width: 420px;
+  padding: 18px;
+  width: 100%;
+}
+
+.modal-panel label {
+  color: #5f6f7d;
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+}
+
+.modal-title-row,
+.modal-action-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.modal-title-row h2 {
+  font-size: 18px;
+  line-height: 1.3;
+  margin: 0 0 4px;
+}
+
+.modal-action-row {
+  justify-content: flex-end;
 }
 
 .message-cell {

@@ -6,3 +6,4 @@ class ConversationSegmentRunRequest(BaseModel):
     start_time: str = Field(min_length=1)
     end_time: str = Field(min_length=1)
     mode: str = "auto"
+    force: bool = False

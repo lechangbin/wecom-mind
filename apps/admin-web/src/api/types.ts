@@ -78,6 +78,14 @@ export type ConversationItem = {
   match_source: "summary" | "message" | "none";
 };
 
+export type ConversationSegmentRunResult = {
+  run_id: string | null;
+  status: string;
+  force: boolean;
+  superseded_count: number;
+  segments: ConversationItem[];
+};
+
 export type DashboardOverview = {
   date: string;
   today_message_count: number;
@@ -184,6 +192,26 @@ export type UserProfile = {
   updated_at: string;
 };
 
+export type RecentProfileGenerationResult = {
+  userid: string;
+  force: boolean;
+  window: {
+    start: string;
+    end: string;
+  };
+  conversation_count: number;
+  profile_update_count: number;
+  results: Array<{
+    conversation_no: string;
+    userid: string;
+    run_id?: string | null;
+    status: string;
+    profile_action?: string | null;
+    profile_version?: number | null;
+    error?: string | null;
+  }>;
+};
+
 export type SystemConfigSummary = {
   app: {
     app_env: string;
@@ -207,6 +235,8 @@ export type SystemConfigSummary = {
     intent_bot_configured: boolean;
     message_reconcile_enabled: boolean;
     message_reconcile_chatids_count: number;
+    message_reconcile_chatids: string[];
+    default_chatid: string | null;
     message_reconcile_auto_enqueue: boolean;
     message_reconcile_auto_send: boolean;
     timeout_seconds: number;

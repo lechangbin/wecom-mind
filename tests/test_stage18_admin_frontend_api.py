@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -507,6 +507,274 @@ def test_user_profile_versions_api_returns_profile_history(tmp_path):
     assert data["items"][1]["version"] == 1
 
 
+def test_manual_profile_generation_uses_recent_conversations_for_selected_user(tmp_path):
+    client, app = make_client(tmp_path)
+    now = datetime.now(timezone.utc)
+    with app.state.SessionLocal() as session:
+        first = _add_message(
+            session,
+            msgid="MSG_RECENT_PROFILE_START",
+            chatid="CHAT_PROFILE",
+            userid="USER_RECENT_PROFILE",
+            content="以后回复我请先给结论。",
+            create_time=now - timedelta(days=1, minutes=2),
+        )
+        second = _add_message(
+            session,
+            msgid="MSG_RECENT_PROFILE_END",
+            chatid="CHAT_PROFILE",
+            userid="USER_OTHER",
+            content="我也想要三条以内。",
+            create_time=now - timedelta(days=1),
+        )
+        ai_run = AiRun(
+            run_id="airun_stage18_recent_profile_segment",
+            workflow_code="conversation_boundary_detection",
+            workflow_version="v1",
+            input_json={},
+            response_mode="blocking",
+            status="success",
+        )
+        session.add(ai_run)
+        session.flush()
+        session.add(
+            ConversationSegment(
+                conversation_no="conv_recent_profile",
+                chatid="CHAT_PROFILE",
+                start_message_id=first.id,
+                end_message_id=second.id,
+                start_time=first.create_time,
+                end_time=second.create_time,
+                title="画像触发会话",
+                summary="用户表达了回复偏好。",
+                keywords=["回复偏好"],
+                participants=["USER_RECENT_PROFILE", "USER_OTHER"],
+                ai_run_id=ai_run.id,
+                confidence=0.9,
+                version=1,
+                status="active",
+            )
+        )
+        session.commit()
+
+    response = client.post("/api/users/USER_RECENT_PROFILE/profile/generate")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["userid"] == "USER_RECENT_PROFILE"
+    assert data["conversation_count"] == 1
+    assert data["profile_update_count"] == 1
+    assert data["results"][0]["conversation_no"] == "conv_recent_profile"
+    assert data["results"][0]["status"] == "success"
+
+    current = client.get("/api/users/USER_RECENT_PROFILE/profile")
+    assert current.status_code == 200
+    assert current.json()["data"]["userid"] == "USER_RECENT_PROFILE"
+
+
+def test_force_conversation_segmentation_replaces_existing_segments(tmp_path):
+    client, app = make_client(tmp_path)
+    target_date = datetime(2026, 6, 19, tzinfo=timezone.utc)
+    with app.state.SessionLocal() as session:
+        first = _add_message(
+            session,
+            msgid="MSG_FORCE_SEGMENT_START",
+            chatid="CHAT_FORCE_SEGMENT",
+            userid="USER_FORCE_SEGMENT",
+            content="第一条消息",
+            create_time=target_date.replace(hour=1, minute=0),
+        )
+        second = _add_message(
+            session,
+            msgid="MSG_FORCE_SEGMENT_END",
+            chatid="CHAT_FORCE_SEGMENT",
+            userid="USER_FORCE_SEGMENT",
+            content="第二条消息",
+            create_time=target_date.replace(hour=1, minute=5),
+        )
+        ai_run = AiRun(
+            run_id="airun_stage18_existing_segment",
+            workflow_code="conversation_boundary_detection",
+            workflow_version="v1",
+            input_json={},
+            response_mode="blocking",
+            status="success",
+        )
+        session.add(ai_run)
+        session.flush()
+        session.add(
+            ConversationSegment(
+                conversation_no="conv_existing_force_segment",
+                chatid="CHAT_FORCE_SEGMENT",
+                start_message_id=first.id,
+                end_message_id=first.id,
+                start_time=first.create_time,
+                end_time=first.create_time,
+                title="旧切片",
+                summary="旧的会话切片。",
+                keywords=[],
+                participants=["USER_FORCE_SEGMENT"],
+                ai_run_id=ai_run.id,
+                confidence=0.8,
+                version=1,
+                status="active",
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        "/api/conversations/segment/run",
+        json={
+            "chatid": "CHAT_FORCE_SEGMENT",
+            "start_time": "2026-06-19T00:00:00+00:00",
+            "end_time": "2026-06-19T23:59:59+00:00",
+            "mode": "manual",
+            "force": True,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "success"
+    assert data["force"] is True
+    assert data["superseded_count"] == 1
+    assert len(data["segments"]) == 1
+    assert data["segments"][0]["start_message_id"] == first.id
+    assert data["segments"][0]["end_message_id"] == second.id
+
+    with app.state.SessionLocal() as session:
+        old_segment = session.scalar(
+            select(ConversationSegment).where(
+                ConversationSegment.conversation_no == "conv_existing_force_segment"
+            )
+        )
+        active_segments = session.scalars(
+            select(ConversationSegment).where(
+                ConversationSegment.chatid == "CHAT_FORCE_SEGMENT",
+                ConversationSegment.status == "active",
+            )
+        ).all()
+
+    assert old_segment is not None
+    assert old_segment.status == "superseded"
+    assert len(active_segments) == 1
+    assert active_segments[0].start_message_id == first.id
+    assert active_segments[0].end_message_id == second.id
+
+
+def test_force_profile_generation_bypasses_existing_evidence_and_rewrites_profile(tmp_path):
+    client, app = make_client(tmp_path)
+    now = datetime.now(timezone.utc)
+    with app.state.SessionLocal() as session:
+        first = _add_message(
+            session,
+            msgid="MSG_FORCE_PROFILE_START",
+            chatid="CHAT_FORCE_PROFILE",
+            userid="USER_FORCE_PROFILE",
+            content="以后回复我请先给结论。",
+            create_time=now - timedelta(days=1, minutes=2),
+        )
+        second = _add_message(
+            session,
+            msgid="MSG_FORCE_PROFILE_END",
+            chatid="CHAT_FORCE_PROFILE",
+            userid="USER_FORCE_PROFILE",
+            content="最好三条以内。",
+            create_time=now - timedelta(days=1),
+        )
+        ai_run = AiRun(
+            run_id="airun_stage18_force_profile_seed",
+            workflow_code="user_profile_update",
+            workflow_version="v1",
+            input_json={},
+            response_mode="blocking",
+            status="success",
+        )
+        session.add(ai_run)
+        session.flush()
+        session.add(
+            ConversationSegment(
+                conversation_no="conv_force_profile",
+                chatid="CHAT_FORCE_PROFILE",
+                start_message_id=first.id,
+                end_message_id=second.id,
+                start_time=first.create_time,
+                end_time=second.create_time,
+                title="强制画像会话",
+                summary="用户表达了回复偏好。",
+                keywords=["回复偏好"],
+                participants=["USER_FORCE_PROFILE"],
+                ai_run_id=ai_run.id,
+                confidence=0.9,
+                version=1,
+                status="active",
+            )
+        )
+        profile = UserProfile(
+            userid="USER_FORCE_PROFILE",
+            summary="旧画像",
+            profile_json={
+                "summary": "旧画像",
+                "facts": [
+                    {
+                        "fact_id": "fact_old_force_profile",
+                        "fact_type": "preference",
+                        "label": "旧偏好",
+                        "description": "旧画像事实。",
+                        "confidence": 0.9,
+                        "evidence_msgids": ["MSG_FORCE_PROFILE_START"],
+                        "evidence_conversation_nos": ["conv_force_profile"],
+                        "status": "active",
+                    }
+                ],
+            },
+            ai_run_id=ai_run.id,
+            confidence=0.9,
+            version=1,
+            status="active",
+        )
+        session.add(profile)
+        session.flush()
+        session.add(
+            UserProfileFact(
+                userid="USER_FORCE_PROFILE",
+                profile_id=profile.id,
+                source_ai_run_id=ai_run.id,
+                fact_type="preference",
+                label="旧偏好",
+                description="旧画像事实。",
+                evidence_msgids=["MSG_FORCE_PROFILE_START"],
+                evidence_conversation_nos=["conv_force_profile"],
+                confidence=0.9,
+                status="active",
+            )
+        )
+        session.commit()
+
+    response = client.post(
+        "/api/users/USER_FORCE_PROFILE/profile/generate",
+        json={"force": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["force"] is True
+    assert data["conversation_count"] == 1
+    assert data["profile_update_count"] == 1
+    assert data["results"][0]["status"] == "success"
+    assert data["results"][0]["profile_action"] == "create"
+
+    with app.state.SessionLocal() as session:
+        profiles = session.scalars(
+            select(UserProfile)
+            .where(UserProfile.userid == "USER_FORCE_PROFILE")
+            .order_by(UserProfile.version.asc())
+        ).all()
+
+    assert [profile.status for profile in profiles] == ["superseded", "active"]
+    assert profiles[-1].version == 2
+
+
 def test_system_config_summary_is_desensitized_and_exposes_runtime_switches(tmp_path):
     settings = Settings(
         app_env="test",
@@ -541,6 +809,8 @@ def test_system_config_summary_is_desensitized_and_exposes_runtime_switches(tmp_
     assert data["wecom"]["sender_mode"] == "aibot_ws"
     assert data["wecom"]["reply_bot_configured"] is True
     assert data["wecom"]["message_reconcile_chatids_count"] == 2
+    assert data["wecom"]["message_reconcile_chatids"] == ["CHAT_A", "CHAT_B"]
+    assert data["wecom"]["default_chatid"] == "CHAT_A"
     assert data["dify"]["client_mode"] == "real"
     assert data["dify"]["workflow_api_keys"]["group_knowledge_reply"] is True
     assert data["ai_memory"]["enabled"] is True

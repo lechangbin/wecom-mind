@@ -32,6 +32,8 @@ def get_config_summary(settings: Settings) -> dict[str, Any]:
             ),
             "message_reconcile_enabled": settings.wecom_message_reconcile_enabled,
             "message_reconcile_chatids_count": len(settings.message_reconcile_chatid_list),
+            "message_reconcile_chatids": settings.message_reconcile_chatid_list,
+            "default_chatid": _first_or_none(settings.message_reconcile_chatid_list),
             "message_reconcile_auto_enqueue": settings.wecom_message_reconcile_auto_enqueue,
             "message_reconcile_auto_send": settings.wecom_message_reconcile_auto_send,
             "timeout_seconds": settings.wecom_timeout_seconds,
@@ -133,6 +135,10 @@ def _database_kind(database_url: str) -> str:
 
 def _enabled_status(enabled: bool) -> str:
     return "unknown" if enabled else "disabled"
+
+
+def _first_or_none(values: list[str]) -> str | None:
+    return values[0] if values else None
 
 
 def _ai_memory_worker_status(settings: Settings, ai_memory_state: dict[str, Any]) -> str:

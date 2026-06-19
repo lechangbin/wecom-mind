@@ -3,11 +3,13 @@ import type {
   AdminSession,
   AiRunItem,
   ConversationItem,
+  ConversationSegmentRunResult,
   DashboardOverview,
   FullTestStatus,
   MessageItem,
   OutboxItem,
   Page,
+  RecentProfileGenerationResult,
   ReplyTask,
   SystemConfigSummary,
   UserItem,
@@ -78,8 +80,17 @@ export const api = {
   userProfile: (userid: string) => apiGet<UserProfile>(`/api/users/${userid}/profile`),
   userProfileVersions: (userid: string, params: QueryParams) =>
     apiGet<Page<UserProfile>>(`/api/users/${userid}/profile/versions`, params),
+  generateUserProfile: (userid: string, body: { force?: boolean } = {}) =>
+    apiPost<RecentProfileGenerationResult>(`/api/users/${userid}/profile/generate`, body),
   conversations: (params: QueryParams) =>
     apiGet<Page<ConversationItem>>("/api/conversations", params),
+  runConversationSegment: (body: {
+    chatid: string;
+    start_time: string;
+    end_time: string;
+    mode?: string;
+    force?: boolean;
+  }) => apiPost<ConversationSegmentRunResult>("/api/conversations/segment/run", body),
   conversationMessages: (conversationNo: string) =>
     apiGet<Page<MessageItem>>(`/api/conversations/${conversationNo}/messages`),
   fullTestStatus: () => apiGet<FullTestStatus>("/api/ai-memory/full-test/status"),
