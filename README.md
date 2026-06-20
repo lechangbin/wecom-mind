@@ -278,16 +278,29 @@ DIFY_CHAT_PROACTIVE_REMINDER_API_KEY=your-proactive-key
 
 Bot Secret 只放本地 `.env` 或部署环境变量，不写入文档、测试或提交内容。长连接 @ 回复和主动发送使用 `WECOM_REPLY_AIBOT_*`；历史消息补漏和主动提醒采集使用 `WECOM_INTENT_AIBOT_*` / `WECOM_BOT_*`。
 
-3. 一键启动 API 和智能机器人长连接 worker：
+3. 一键启动 API、智能机器人长连接 worker 和管理前端：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1
 ```
 
-默认 API 地址为 `http://127.0.0.1:8010`，日志写入 `logs/`。如需改端口：
+默认 API 地址为 `http://127.0.0.1:8010`，管理前端地址为 `http://127.0.0.1:5173`，日志写入 `logs/`。前端地址由 `.env` 控制：
+
+```env
+ADMIN_WEB_HOST=127.0.0.1
+ADMIN_WEB_PORT=5173
+```
+
+如需改 API 端口：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1 -Port 8000
+```
+
+如只想启动 API 和 worker，不启动管理前端：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\start-services.ps1 -NoAdminWeb
 ```
 
 实机链路为：测试群发消息 -> worker 收到 @ frame 后先发 callback-bound stream 占位 -> 入库 -> 触发 Dify -> 创建 outbox -> 用同一 stream 发送最终回复。

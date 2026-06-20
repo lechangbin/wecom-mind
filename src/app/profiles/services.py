@@ -1,9 +1,9 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -16,6 +16,7 @@ from app.db.models import (
     UserProfileFact,
     now_utc,
 )
+from app.ai_memory.full_test import run_user_profile_update_for_segment
 from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow
 from app.profiles.schemas import UserProfileAnalyzeRequest
@@ -23,6 +24,76 @@ from app.profiles.schemas import UserProfileAnalyzeRequest
 
 class UserProfileOutputValidationError(Exception):
     pass
+
+
+def run_recent_user_profile_generation(
+    session: Session,
+    *,
+    userid: str,
+    dify_client: DifyClient,
+    force: bool = False,
+) -> dict[str, Any]:
+    end_time = now_utc()
+    start_time = end_time - timedelta(days=30)
+    segments = _recent_conversation_segments_for_user(
+        session,
+        userid=userid,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+    results = []
+    rewrite_started = False
+    for segment in segments:
+        if not force and _profile_already_updated_for_conversation(
+            session,
+            userid=userid,
+            conversation_no=segment.conversation_no,
+        ):
+            results.append(
+                {
+                    "conversation_no": segment.conversation_no,
+                    "userid": userid,
+                    "status": "skipped",
+                    "profile_action": "already_updated",
+                    "profile_version": None,
+                    "error": None,
+                }
+            )
+            continue
+        results.append(
+            run_user_profile_update_for_segment(
+                session,
+                segment=segment,
+                userid=userid,
+                dify_client=dify_client,
+                force_rewrite=force,
+                reset_current_profile=force and not rewrite_started,
+            )
+        )
+        if (
+            results[-1].get("status") == "success"
+            and results[-1].get("profile_action") in {"create", "update"}
+        ):
+            rewrite_started = True
+
+    session.commit()
+    return {
+        "userid": userid,
+        "force": force,
+        "window": {
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+        },
+        "conversation_count": len(segments),
+        "profile_update_count": sum(
+            1
+            for item in results
+            if item.get("status") == "success"
+            and item.get("profile_action") in {"create", "update"}
+        ),
+        "results": results,
+    }
 
 
 def run_user_profile_analysis(
@@ -126,6 +197,34 @@ def get_latest_user_profile(session: Session, userid: str) -> dict[str, Any]:
     return user_profile_to_dict(profile, facts)
 
 
+def list_user_profile_versions(
+    session: Session,
+    userid: str,
+    *,
+    limit: int,
+    offset: int,
+) -> dict[str, Any]:
+    total = (
+        session.scalar(
+            select(func.count()).select_from(UserProfile).where(UserProfile.userid == userid)
+        )
+        or 0
+    )
+    profiles = session.scalars(
+        select(UserProfile)
+        .where(UserProfile.userid == userid)
+        .order_by(UserProfile.version.desc(), UserProfile.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [user_profile_to_dict(profile, []) for profile in profiles],
+    }
+
+
 def user_profile_to_dict(
     profile: UserProfile,
     facts: list[UserProfileFact],
@@ -177,6 +276,44 @@ def _messages_in_window(
         for message in candidates
         if start_time <= _to_utc(message.create_time) <= end_time
     ]
+
+
+def _recent_conversation_segments_for_user(
+    session: Session,
+    *,
+    userid: str,
+    start_time: datetime,
+    end_time: datetime,
+) -> list[ConversationSegment]:
+    segments = session.scalars(
+        select(ConversationSegment)
+        .where(
+            ConversationSegment.status == "active",
+            ConversationSegment.end_time >= start_time,
+            ConversationSegment.end_time <= end_time,
+        )
+        .order_by(ConversationSegment.end_time.asc(), ConversationSegment.id.asc())
+    ).all()
+    return [
+        segment
+        for segment in segments
+        if userid in {str(participant) for participant in segment.participants or []}
+    ]
+
+
+def _profile_already_updated_for_conversation(
+    session: Session,
+    *,
+    userid: str,
+    conversation_no: str,
+) -> bool:
+    facts = session.scalars(
+        select(UserProfileFact).where(UserProfileFact.userid == userid)
+    ).all()
+    for fact in facts:
+        if conversation_no in {str(item) for item in fact.evidence_conversation_nos or []}:
+            return True
+    return False
 
 
 def _conversation_summaries_for_user(

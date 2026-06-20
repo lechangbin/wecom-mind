@@ -15,6 +15,13 @@ class Settings(BaseSettings):
 
     app_env: str = "local"
     app_base_url: str = "http://127.0.0.1:8000"
+    admin_web_host: str = "127.0.0.1"
+    admin_web_port: int = 5173
+    admin_username: str | None = None
+    admin_password: str | None = None
+    admin_session_secret: str | None = None
+    admin_session_cookie_name: str = "wecom_admin_session"
+    admin_session_ttl_seconds: int = 8 * 60 * 60
     database_url: str = "sqlite:///./data/app.db"
     redis_url: str | None = None
 

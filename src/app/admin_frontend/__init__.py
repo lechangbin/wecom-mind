@@ -1,0 +1,1 @@
+"""Admin frontend query services."""

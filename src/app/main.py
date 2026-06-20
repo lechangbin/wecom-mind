@@ -1,17 +1,28 @@
 import logging
+from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.admin_auth.services import (
+    admin_path_requires_auth,
+    is_admin_auth_enabled,
+    validate_admin_session_token,
+)
+from app.api.admin_auth import router as admin_auth_router
+from app.api.admin_frontend import router as admin_frontend_router
 from app.api.admin_analytics import router as admin_analytics_router
 from app.api.ai_runs import router as ai_runs_router
 from app.api.ai_memory import router as ai_memory_router
 from app.api.conversations import router as conversations_router
 from app.api.health import router as health_router
+from app.api.messages import router as messages_router
 from app.api.outbox import router as outbox_router
+from app.api.profiles import router as profiles_router
 from app.api.proactive_replies import router as proactive_replies_router
 from app.api.scheduled_intents import router as scheduled_intents_router
+from app.api.system import router as system_router
 from app.api.triggers import router as triggers_router
 from app.api.wecom import router as wecom_router
 from app.config.settings import Settings, get_settings
@@ -51,10 +62,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.wecom_callback_verifier = build_wecom_callback_verifier(settings)
     app.state.dify_client = build_dify_client(settings)
     app.state.wecom_message_sender = build_wecom_message_sender(settings)
+    app.state.ai_memory_full_test_lock = Lock()
+    app.state.ai_memory_full_test_state = {
+        "status": "idle",
+        "current": None,
+        "last_result": None,
+        "last_error": None,
+    }
 
     register_middleware(app)
     register_exception_handlers(app)
     app.include_router(health_router)
+    app.include_router(admin_auth_router)
     app.include_router(wecom_router)
     app.include_router(triggers_router)
     app.include_router(ai_runs_router)
@@ -62,8 +81,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proactive_replies_router)
     app.include_router(scheduled_intents_router)
     app.include_router(admin_analytics_router)
+    app.include_router(messages_router)
+    app.include_router(admin_frontend_router)
     app.include_router(conversations_router)
     app.include_router(ai_memory_router)
+    app.include_router(profiles_router)
+    app.include_router(system_router)
 
     return app
 
@@ -75,11 +98,39 @@ def register_middleware(app: FastAPI) -> None:
         token = set_request_id(request_id)
 
         try:
+            auth_error_response = _admin_auth_error_response(request)
+            if auth_error_response is not None:
+                auth_error_response.headers[REQUEST_ID_HEADER] = request_id
+                return auth_error_response
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
             return response
         finally:
             reset_request_id(token)
+
+
+def _admin_auth_error_response(request: Request) -> JSONResponse | None:
+    settings = request.app.state.settings
+    if not is_admin_auth_enabled(settings):
+        return None
+    if not admin_path_requires_auth(request.url.path):
+        return None
+    try:
+        validate_admin_session_token(
+            settings,
+            request.cookies.get(settings.admin_session_cookie_name),
+        )
+    except AppError as exc:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_response(
+                exc.code,
+                exc.message,
+                request_id=get_request_id(),
+                details=exc.details,
+            ),
+        )
+    return None
 
 
 def register_exception_handlers(app: FastAPI) -> None:

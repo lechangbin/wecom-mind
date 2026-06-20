@@ -3,7 +3,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -16,6 +16,7 @@ from app.ai_memory.full_test import (
     DayWindow,
     run_conversation_boundary_detection,
 )
+from app.admin_frontend.services import message_to_dict
 
 
 class ConversationOutputValidationError(Exception):
@@ -47,12 +48,15 @@ def run_conversation_segmentation(
         window=DayWindow(start=start_time, end=end_time),
         messages=messages,
         dify_client=dify_client,
+        force=payload.force,
     )
     session.commit()
 
     return {
         "run_id": result["run_id"],
         "status": result["status"],
+        "force": result.get("force", payload.force),
+        "superseded_count": result.get("superseded_count", 0),
         "segments": [
             conversation_segment_to_dict(session.get(ConversationSegment, item["id"]))
             for item in result.get("segments", [])
@@ -65,17 +69,35 @@ def list_conversation_segments(
     session: Session,
     *,
     chatid: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    q: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
-    statement = select(ConversationSegment)
+    statement = select(ConversationSegment).where(ConversationSegment.status == "active")
     if chatid:
         statement = statement.where(ConversationSegment.chatid == chatid)
+    if start_date or end_date:
+        start_time, end_time = _date_range(start_date, end_date)
+        statement = statement.where(
+            ConversationSegment.start_time >= start_time,
+            ConversationSegment.start_time < end_time,
+        )
 
     items = session.scalars(
         statement.order_by(ConversationSegment.start_time.desc(), ConversationSegment.id.desc())
     ).all()
+    matched_items = _filter_conversations_by_query(session, items, q)
+    page_items = matched_items[offset : offset + limit]
     return {
-        "total": len(items),
-        "items": [conversation_segment_to_dict(item) for item in items],
+        "total": len(matched_items),
+        "limit": limit,
+        "offset": offset,
+        "items": [
+            conversation_segment_to_dict(item, match_source=match_source)
+            for item, match_source in page_items
+        ],
     }
 
 
@@ -95,7 +117,19 @@ def get_conversation_segment(
     return segment
 
 
-def conversation_segment_to_dict(segment: ConversationSegment) -> dict[str, Any]:
+def conversation_segment_to_dict(
+    segment: ConversationSegment,
+    *,
+    match_source: str = "none",
+) -> dict[str, Any]:
+    return _conversation_segment_to_dict(segment, match_source=match_source)
+
+
+def _conversation_segment_to_dict(
+    segment: ConversationSegment,
+    *,
+    match_source: str,
+) -> dict[str, Any]:
     return {
         "id": segment.id,
         "conversation_no": segment.conversation_no,
@@ -112,9 +146,93 @@ def conversation_segment_to_dict(segment: ConversationSegment) -> dict[str, Any]
         "confidence": float(segment.confidence),
         "version": segment.version,
         "status": segment.status,
+        "match_source": match_source,
         "created_at": _iso(segment.created_at),
         "updated_at": _iso(segment.updated_at),
     }
+
+
+def list_conversation_messages(
+    session: Session,
+    *,
+    conversation_no: str,
+) -> dict[str, Any]:
+    segment = get_conversation_segment(session, conversation_no=conversation_no)
+    messages = _messages_for_segment(session, segment)
+    return {
+        "total": len(messages),
+        "items": [message_to_dict(message) for message in messages],
+    }
+
+
+def _filter_conversations_by_query(
+    session: Session,
+    items: list[ConversationSegment],
+    q: str | None,
+) -> list[tuple[ConversationSegment, str]]:
+    if not q:
+        return [(item, "none") for item in items]
+
+    needle = q.lower()
+    summary_matches = []
+    message_matches = []
+    for item in items:
+        if needle in (item.summary or "").lower() or needle in (item.title or "").lower():
+            summary_matches.append((item, "summary"))
+            continue
+        if _segment_messages_contain(session, item, needle):
+            message_matches.append((item, "message"))
+
+    summary_matches.sort(key=lambda pair: pair[0].start_time, reverse=True)
+    message_matches.sort(key=lambda pair: pair[0].start_time, reverse=True)
+    return summary_matches + message_matches
+
+
+def _segment_messages_contain(
+    session: Session,
+    segment: ConversationSegment,
+    needle: str,
+) -> bool:
+    start = session.get(Message, segment.start_message_id)
+    end = session.get(Message, segment.end_message_id)
+    if not start or not end:
+        return False
+    count = session.scalar(
+        select(func.count())
+        .select_from(Message)
+        .where(
+            Message.chatid == segment.chatid,
+            Message.create_time >= _to_utc(start.create_time),
+            Message.create_time <= _to_utc(end.create_time),
+            func.lower(Message.content_text).like(f"%{needle}%"),
+        )
+    )
+    return bool(count)
+
+
+def _messages_for_segment(
+    session: Session,
+    segment: ConversationSegment,
+) -> list[Message]:
+    start = session.get(Message, segment.start_message_id)
+    end = session.get(Message, segment.end_message_id)
+    if not start or not end:
+        return []
+    return session.scalars(
+        select(Message)
+        .where(
+            Message.chatid == segment.chatid,
+            Message.create_time >= _to_utc(start.create_time),
+            Message.create_time <= _to_utc(end.create_time),
+        )
+        .order_by(Message.create_time.asc(), Message.id.asc())
+    ).all()
+
+
+def _date_range(start_date: str | None, end_date: str | None) -> tuple[datetime, datetime]:
+    from app.admin_frontend.services import _date_range as admin_date_range
+
+    return admin_date_range(start_date, end_date)
 
 
 def _messages_in_window(

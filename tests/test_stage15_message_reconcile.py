@@ -383,6 +383,21 @@ def test_reconcile_window_uses_lookback_without_cursor():
     assert end == now
 
 
+def test_reconcile_window_clamps_stale_cursor_to_wecom_history_limit():
+    now = datetime(2026, 6, 11, 3, 30, 0, tzinfo=timezone.utc)
+    last_pulled_at = datetime(2026, 6, 3, 8, 20, 21, tzinfo=timezone.utc)
+
+    start, end = calculate_reconcile_window(
+        now=now,
+        last_pulled_at=last_pulled_at,
+        lookback_seconds=12,
+        overlap_seconds=2,
+    )
+
+    assert start == datetime(2026, 6, 4, 3, 31, 0, tzinfo=timezone.utc)
+    assert end == now
+
+
 def test_message_reconcile_ingests_then_runs_proactive_scan_and_updates_cursor(tmp_path):
     _client, app = make_client(tmp_path)
     message_source = RecordingMessageSource(

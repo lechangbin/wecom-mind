@@ -1,6 +1,7 @@
 param(
     [int]$Port = 8010,
     [switch]$NoStopExisting,
+    [switch]$NoAdminWeb,
     [switch]$DryRun
 )
 
@@ -42,6 +43,50 @@ function Stop-ExistingProjectProcess {
     }
 }
 
+function Stop-ExistingNodeProjectProcess {
+    param([string]$Pattern)
+
+    $escapedRoot = [regex]::Escape($Root.Path)
+    $processes = Get-CimInstance Win32_Process |
+        Where-Object {
+            $_.Name -like "node*" -and
+            $_.CommandLine -match $escapedRoot -and
+            $_.CommandLine -match $Pattern
+        }
+
+    foreach ($process in $processes) {
+        Write-Host "Stopping existing node process $($process.ProcessId): $Pattern"
+        Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+
+    foreach ($process in $processes) {
+        try {
+            Wait-Process -Id $process.ProcessId -Timeout 5 -ErrorAction SilentlyContinue
+        } catch {
+            # The process may already be gone.
+        }
+    }
+}
+
+function Stop-ProcessOnPort {
+    param(
+        [int]$TargetPort,
+        [string]$Name
+    )
+
+    $connections = Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue
+    foreach ($connection in $connections) {
+        Write-Host "Stopping process on $Name port $TargetPort`: $($connection.OwningProcess)"
+        Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue
+    }
+
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        Start-Sleep -Milliseconds 300
+        $remaining = Get-NetTCPConnection -LocalPort $TargetPort -State Listen -ErrorAction SilentlyContinue
+    } while ($remaining -and (Get-Date) -lt $deadline)
+}
+
 function Get-LogPath {
     param([string]$Path)
 
@@ -61,10 +106,12 @@ function Get-LogPath {
     }
 }
 
-function Start-ServiceProcess {
+function Start-ExecutableProcess {
     param(
         [string]$Name,
+        [string]$FilePath,
         [string[]]$Arguments,
+        [string]$WorkingDirectory,
         [string]$OutLog,
         [string]$ErrLog
     )
@@ -74,7 +121,7 @@ function Start-ServiceProcess {
 
     Write-Host "Starting $Name..."
     if ($DryRun) {
-        Write-Host "  $Python $($Arguments -join ' ')"
+        Write-Host "  $FilePath $($Arguments -join ' ')"
         Write-Host "  stdout: $ResolvedOutLog"
         Write-Host "  stderr: $ResolvedErrLog"
         return [pscustomobject]@{
@@ -85,9 +132,9 @@ function Start-ServiceProcess {
     }
 
     $Process = Start-Process `
-        -FilePath $Python `
+        -FilePath $FilePath `
         -ArgumentList $Arguments `
-        -WorkingDirectory $Root `
+        -WorkingDirectory $WorkingDirectory `
         -WindowStyle Hidden `
         -RedirectStandardOutput $ResolvedOutLog `
         -RedirectStandardError $ResolvedErrLog `
@@ -98,6 +145,23 @@ function Start-ServiceProcess {
         OutLog = $ResolvedOutLog
         ErrLog = $ResolvedErrLog
     }
+}
+
+function Start-ServiceProcess {
+    param(
+        [string]$Name,
+        [string[]]$Arguments,
+        [string]$OutLog,
+        [string]$ErrLog
+    )
+
+    return Start-ExecutableProcess `
+        -Name $Name `
+        -FilePath $Python `
+        -Arguments $Arguments `
+        -WorkingDirectory $Root `
+        -OutLog $OutLog `
+        -ErrLog $ErrLog
 }
 
 function Get-DotEnvValue {
@@ -118,11 +182,33 @@ function Get-DotEnvValue {
     return (($line -split "=", 2)[1]).Trim().Trim('"').Trim("'")
 }
 
+$AdminWebHost = $env:ADMIN_WEB_HOST
+if (-not $AdminWebHost) {
+    $AdminWebHost = Get-DotEnvValue "ADMIN_WEB_HOST"
+}
+if (-not $AdminWebHost) {
+    $AdminWebHost = "127.0.0.1"
+}
+
+$AdminWebPortText = $env:ADMIN_WEB_PORT
+if (-not $AdminWebPortText) {
+    $AdminWebPortText = Get-DotEnvValue "ADMIN_WEB_PORT"
+}
+if (-not $AdminWebPortText) {
+    $AdminWebPortText = "5173"
+}
+$AdminWebPort = [int]$AdminWebPortText
+
 if (-not $NoStopExisting -and -not $DryRun) {
     Stop-ExistingProjectProcess "uvicorn app\.main:app"
     Stop-ExistingProjectProcess "scripts\\run_wecom_aibot_worker\.py"
     Stop-ExistingProjectProcess "scripts\\run_message_reconcile_worker\.py"
     Stop-ExistingProjectProcess "scripts\\run_ai_memory_full_test_worker\.py"
+    Stop-ProcessOnPort -TargetPort $Port -Name "API"
+    if (-not $NoAdminWeb) {
+        Stop-ExistingNodeProjectProcess "vite"
+        Stop-ProcessOnPort -TargetPort $AdminWebPort -Name "admin web"
+    }
     Start-Sleep -Seconds 1
 }
 
@@ -134,10 +220,12 @@ $ReconcileOut = Join-Path $Logs "message-reconcile-worker.out.log"
 $ReconcileErr = Join-Path $Logs "message-reconcile-worker.err.log"
 $AiMemoryOut = Join-Path $Logs "ai-memory-full-test-worker.out.log"
 $AiMemoryErr = Join-Path $Logs "ai-memory-full-test-worker.err.log"
+$AdminWebOut = Join-Path $Logs "admin-web.out.log"
+$AdminWebErr = Join-Path $Logs "admin-web.err.log"
 
 $Api = Start-ServiceProcess `
     -Name "API" `
-    -Arguments @("-m", "uvicorn", "app.main:app", "--app-dir", "src", "--reload", "--host", "127.0.0.1", "--port", "$Port") `
+    -Arguments @("-m", "uvicorn", "app.main:app", "--app-dir", "src", "--host", "127.0.0.1", "--port", "$Port") `
     -OutLog $ApiOut `
     -ErrLog $ApiErr
 
@@ -175,6 +263,37 @@ if ($AiMemoryEnabled -and $AiMemoryEnabled.ToLowerInvariant() -eq "true") {
         -ErrLog $AiMemoryErr
 }
 
+$AdminWeb = $null
+if (-not $NoAdminWeb) {
+    $AdminWebRoot = Join-Path $Root "apps\admin-web"
+    if (-not (Test-Path $AdminWebRoot)) {
+        throw "Admin web app not found: $AdminWebRoot"
+    }
+
+    $Npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+    if (-not $Npm) {
+        $Npm = (Get-Command npm -ErrorAction Stop).Source
+    }
+
+    $PreviousViteApiProxyTarget = $env:VITE_API_PROXY_TARGET
+    $env:VITE_API_PROXY_TARGET = "http://127.0.0.1:$Port"
+    try {
+        $AdminWeb = Start-ExecutableProcess `
+            -Name "Admin web" `
+            -FilePath $Npm `
+            -Arguments @("run", "dev", "--", "--host", $AdminWebHost, "--port", "$AdminWebPort") `
+            -WorkingDirectory $AdminWebRoot `
+            -OutLog $AdminWebOut `
+            -ErrLog $AdminWebErr
+    } finally {
+        if ($null -eq $PreviousViteApiProxyTarget) {
+            Remove-Item Env:\VITE_API_PROXY_TARGET -ErrorAction SilentlyContinue
+        } else {
+            $env:VITE_API_PROXY_TARGET = $PreviousViteApiProxyTarget
+        }
+    }
+}
+
 if ($DryRun) {
     Write-Host "Dry run complete."
     exit 0
@@ -196,6 +315,11 @@ if ($AiMemory) {
 } else {
     Write-Host "  AI memory worker: disabled"
 }
+if ($AdminWeb) {
+    Write-Host "  Admin web PID: $($AdminWeb.Process.Id)  http://$($AdminWebHost):$($AdminWebPort)"
+} else {
+    Write-Host "  Admin web: disabled"
+}
 Write-Host ""
 Write-Host "Logs:"
 Write-Host "  API stdout:    $($Api.OutLog)"
@@ -209,4 +333,8 @@ if ($Reconcile) {
 if ($AiMemory) {
     Write-Host "  AI memory stdout: $($AiMemory.OutLog)"
     Write-Host "  AI memory stderr: $($AiMemory.ErrLog)"
+}
+if ($AdminWeb) {
+    Write-Host "  Admin web stdout: $($AdminWeb.OutLog)"
+    Write-Host "  Admin web stderr: $($AdminWeb.ErrLog)"
 }

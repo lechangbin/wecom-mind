@@ -31,6 +31,8 @@ def create_outbox(
 def list_outbox_messages(
     status: str | None = Query(default=None),
     chatid: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: Session = Depends(get_session),
 ):
     statement = select(OutboxMessage)
@@ -47,10 +49,14 @@ def list_outbox_messages(
     total = session.scalar(count_statement)
     items = session.scalars(
         statement.order_by(OutboxMessage.created_at.desc(), OutboxMessage.id.desc())
+        .limit(limit)
+        .offset(offset)
     ).all()
     return success_response(
         {
             "total": total,
+            "limit": limit,
+            "offset": offset,
             "items": [outbox_to_dict(item) for item in items],
         },
         request_id=get_request_id(),

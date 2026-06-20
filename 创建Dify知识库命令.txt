@@ -1,0 +1,14 @@
+先干跑确认：
+.\.venv\Scripts\python.exe .\scripts\create_dify_datasets_from_folder.py --dry-run
+
+真实创建并上传：
+.\.venv\Scripts\python.exe .\scripts\create_dify_datasets_from_folder.py
+
+如果不想把 DIFY_DATASET_API_KEY 写入 .env，可临时传入：
+.\.venv\Scripts\python.exe .\scripts\create_dify_datasets_from_folder.py --api-key "你的Dify知识库APIKey"
+
+如果中途遇到限流，稍后续跑：
+.\.venv\Scripts\python.exe .\scripts\create_dify_datasets_from_folder.py --resume --api-key "你的Dify知识库APIKey"
+
+如 Dify 工作区默认不是 OpenAI embedding，可覆盖：
+.\.venv\Scripts\python.exe .\scripts\create_dify_datasets_from_folder.py --embedding-model "你的embedding模型" --embedding-model-provider "你的provider"

@@ -4,7 +4,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.config.settings import Settings
-from app.db.models import AiRun, AiWorkflow, BotReply, OutboxMessage
+from app.db.models import (
+    AiRun,
+    AiWorkflow,
+    BotReply,
+    OutboxMessage,
+    UserProfile,
+    UserProfileFact,
+    now_utc,
+)
 from app.dify.client import DifyHttpClient
 from app.main import create_app
 
@@ -95,6 +103,57 @@ def ingest_text_message(
     return response.json()["data"]["message_id"]
 
 
+def create_active_profile(session, *, userid: str, summary: str, preferences: list[str]):
+    now = now_utc()
+    run = AiRun(
+        run_id=f"profile_run_{userid}",
+        workflow_code="user_profile_update",
+        workflow_version="v1",
+        trigger_event_id=None,
+        input_json={},
+        output_json={},
+        response_mode="blocking",
+        status="success",
+        created_at=now,
+        started_at=now,
+        finished_at=now,
+    )
+    session.add(run)
+    session.flush()
+
+    profile = UserProfile(
+        userid=userid,
+        summary=summary,
+        profile_json={
+            "summary": summary,
+            "preferences": preferences,
+            "communication_style": {"tone": "concise"},
+        },
+        ai_run_id=run.id,
+        confidence=0.91,
+        version=1,
+        status="active",
+        last_analyzed_at=now,
+    )
+    session.add(profile)
+    session.flush()
+    session.add(
+        UserProfileFact(
+            userid=userid,
+            profile_id=profile.id,
+            source_ai_run_id=run.id,
+            fact_type="communication_preference",
+            label=preferences[0],
+            description=f"{userid} {preferences[0]}",
+            evidence_msgids=[],
+            evidence_conversation_nos=[],
+            confidence=0.88,
+            status="active",
+        )
+    )
+    session.commit()
+
+
 def test_mention_message_uses_group_knowledge_reply_and_creates_reply_outbox(tmp_path):
     dify_client = GroupKnowledgeReplyDifyClient()
     client, app = make_client(tmp_path, dify_client=dify_client)
@@ -104,6 +163,13 @@ def test_mention_message_uses_group_knowledge_reply_and_creates_reply_outbox(tmp
         content="@机器人 化妆品标签合规要注意什么？",
         mentioned_bot=True,
     )
+    with app.state.SessionLocal() as session:
+        create_active_profile(
+            session,
+            userid="USER_A",
+            summary="偏好先给结论再列要点。",
+            preferences=["先结论后要点"],
+        )
 
     response = client.post("/api/triggers/evaluate", json={"message_id": message_id})
 
@@ -117,9 +183,18 @@ def test_mention_message_uses_group_knowledge_reply_and_creates_reply_outbox(tmp
     assert workflow.workflow_code == "group_knowledge_reply"
     assert input_json["payload"]["question"] == "@机器人 化妆品标签合规要注意什么？"
     assert input_json["payload"]["message"]["msgid"] == "MSG_G1"
+    assert input_json["payload"]["user_profile"]["userid"] == "USER_A"
+    assert input_json["payload"]["profiles_by_userid"]["USER_A"]["summary"] == (
+        "偏好先给结论再列要点。"
+    )
+    assert input_json["payload"]["reply_profile_contexts"]["USER_A"]["facts"][0]["label"] == (
+        "先结论后要点"
+    )
 
     with app.state.SessionLocal() as session:
-        run = session.scalar(select(AiRun))
+        run = session.scalar(
+            select(AiRun).where(AiRun.workflow_code == "group_knowledge_reply")
+        )
         outbox = session.scalar(select(OutboxMessage))
         reply = session.scalar(select(BotReply))
 
@@ -150,7 +225,9 @@ def test_out_of_scope_group_knowledge_reply_creates_fixed_prompt_outbox(tmp_path
     assert event["outbox"]["outbox_id"]
 
     with app.state.SessionLocal() as session:
-        run = session.scalar(select(AiRun))
+        run = session.scalar(
+            select(AiRun).where(AiRun.workflow_code == "group_knowledge_reply")
+        )
         outbox = session.scalar(select(OutboxMessage))
         reply = session.scalar(select(BotReply))
 
@@ -179,6 +256,19 @@ def test_proactive_reply_run_uses_chat_proactive_reminder_and_creates_outbox(tmp
         content="最好查一下知识库。",
         create_time=1777827660,
     )
+    with app.state.SessionLocal() as session:
+        create_active_profile(
+            session,
+            userid="USER_A",
+            summary="偏好简短直接。",
+            preferences=["简短直接"],
+        )
+        create_active_profile(
+            session,
+            userid="USER_B",
+            summary="偏好结构化说明。",
+            preferences=["结构化说明"],
+        )
 
     response = client.post(
         "/api/proactive-replies/run",
@@ -205,9 +295,19 @@ def test_proactive_reply_run_uses_chat_proactive_reminder_and_creates_outbox(tmp
         {"userid": "USER_A"},
         {"userid": "USER_B"},
     ]
+    assert set(input_json["payload"]["profiles_by_userid"]) == {"USER_A", "USER_B"}
+    assert input_json["payload"]["profiles_by_userid"]["USER_A"]["summary"] == "偏好简短直接。"
+    assert input_json["payload"]["profiles_by_userid"]["USER_B"]["summary"] == (
+        "偏好结构化说明。"
+    )
+    assert input_json["payload"]["reply_profile_contexts"]["USER_B"]["facts"][0]["label"] == (
+        "结构化说明"
+    )
 
     with app.state.SessionLocal() as session:
-        run = session.scalar(select(AiRun))
+        run = session.scalar(
+            select(AiRun).where(AiRun.workflow_code == "chat_proactive_reminder")
+        )
         outbox = session.scalar(select(OutboxMessage))
 
         assert run.workflow_code == "chat_proactive_reminder"

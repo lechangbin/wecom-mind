@@ -14,6 +14,7 @@ from app.dify.client import DifyClient
 from app.dify.services import get_enabled_workflow
 from app.outbound.schemas import OutboxCreateRequest
 from app.outbound.services import create_outbox_message, outbox_to_dict
+from app.profiles.reply_context import latest_reply_profile_payloads
 from app.proactive_replies.schemas import ProactiveReplyRunRequest
 
 
@@ -127,6 +128,7 @@ def build_chat_proactive_reminder_input(
     ]
     question = "\n".join(recent_texts)[:800]
     trigger_message = message_items[-1]
+    profiles_by_userid = latest_reply_profile_payloads(session, seen_userids)
     return {
         "payload": {
             "scenario": "message_window_scan",
@@ -136,6 +138,9 @@ def build_chat_proactive_reminder_input(
             "messages": message_items,
             "members": members,
             "handled_records": _handled_records_for_messages(session, messages),
+            "user_profiles": list(profiles_by_userid.values()),
+            "profiles_by_userid": profiles_by_userid,
+            "reply_profile_contexts": profiles_by_userid,
         }
     }
 

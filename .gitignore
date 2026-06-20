@@ -23,3 +23,7 @@ htmlcov/
 .ruff_cache/
 .DS_Store
 Thumbs.db
+
+node_modules/
+dist/
+*.tsbuildinfo
