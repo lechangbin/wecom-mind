@@ -4,8 +4,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-.env
-.env.*
+.env*
 !.env.example
 
 data/
@@ -27,3 +26,8 @@ Thumbs.db
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Local agent sessions and unpublished project materials
+.superpowers/
+projects/
+docs/software-copyright/
