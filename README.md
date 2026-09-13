@@ -1,5 +1,7 @@
 # 群知 · WeCom Mind
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 企业微信群聊 AI 助手：连接实时消息、知识问答、会话记忆与用户画像。
 
 基于 **FastAPI + SQLAlchemy + Dify + React** 构建。由自建后端管理消息、任务状态及业务数据，Dify 负责问答与分析工作流；企业微信长连接承接实时交互，MCP 拉取历史消息用于补漏。
@@ -87,3 +89,11 @@ npm --prefix apps/admin-web run build
 ## 数据与配置
 
 环境文件、密钥备份、数据库、日志、生成输出和本地业务材料由 `.gitignore` 排除。请自行准备知识库和外部服务配置；不要提交真实用户聊天内容或凭据。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE)，允许在保留版权声明和许可文本的前提下使用、修改和分发，具体条款以 `LICENSE` 为准。
+
+Copyright (c) 2026 lechangbin (lechangbin)。
+
+本仓库的 MIT 许可不替代第三方依赖、Dify、企业微信及其他外部服务各自的许可与使用条款，也不授予实际业务知识库、用户数据或第三方品牌的使用权。外部服务凭据与业务数据需自行准备。
